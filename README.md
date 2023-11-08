@@ -29,18 +29,18 @@ $ go install github.com/BishopFox/sj@latest
 
 > Use the `automate` command to send a series of requests to each defined endpoint and analyze the status code of each response.
 
-![Automate Command](https://raw.githubusercontent.com/BishopFox/sj/main/img/sj-automate.gif)
+![Automate Command](img/sj-automate.gif)
 
 > Use the `prepare` command to prepare a list of curl commands for manual testing. You will likely have to modify these slightly.
 
-![Prepare Command](https://raw.githubusercontent.com/BishopFox/sj/main/img/sj-prepare.gif)
+![Prepare Command](img/sj-prepare.gif)
 
 > Use the `endpoints` command to generate a list of raw endpoints from the provided definition file.
 
-![Endpoints Command](https://raw.githubusercontent.com/BishopFox/sj/main/img/sj-endpoints.gif)
+![Endpoints Command](img/sj-endpoints.gif)
 
 ## Help
 
 A full list of commands can be found by using the `--help` flag:
 
-![Help Command](https://raw.githubusercontent.com/BishopFox/sj/main/img/sj-help.gif)
+![Help Command](img/sj-help.gif)
