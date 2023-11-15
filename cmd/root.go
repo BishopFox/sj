@@ -34,7 +34,7 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 	},
-	Version: "1.0.0",
+	Version: "1.0.1",
 }
 
 func Execute() {

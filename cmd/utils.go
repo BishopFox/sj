@@ -94,6 +94,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 
 	fullUrl, _ := url.Parse(swaggerURL)
 	newDoc := UnmarshalSpec(bodyBytes)
+	basePathResult := GetBasePath(newDoc.Servers, TrimHostScheme(apiTarget, fullUrl.Host))
 
 	// BuildObjectsFromSchemaDefinitions(*newDoc) TODO
 
@@ -124,7 +125,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 				u := url.URL{
 					Scheme: SetScheme(swaggerURL),
 					Host:   TrimHostScheme(apiTarget, fullUrl.Host),
-					Path:   GetBasePath(newDoc.Servers, TrimHostScheme(apiTarget, fullUrl.Host)),
+					Path:   basePathResult,
 				}
 				if u.Path == "/" {
 					u.Path = ""
