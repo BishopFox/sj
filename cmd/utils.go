@@ -228,7 +228,7 @@ func GetBasePath(servers openapi3.Servers, host string) (bp string) {
 				if s1.Host != s2.Host || len(servers) > 2 {
 					log.Warn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
 					for i := range servers {
-						fmt.Printf("Server %d: %s\n", i, servers[i].URL)
+						fmt.Printf("Server %d: %s\n", i+1, servers[i].URL)
 					}
 				}
 			}
