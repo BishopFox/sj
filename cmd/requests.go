@@ -98,7 +98,10 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		log.Printf("Error: %s - skipping request.", err)
 		return nil, "", 0
 	} else if err != nil && err != context.Canceled && err != io.EOF {
-		log.Error("Error: response not received - ", err)
+		log.Error("Error: response not received.\n", err)
+		if strings.Contains(fmt.Sprint(err), "tls") {
+			fmt.Println("Try supplying the --insecure flag.")
+		}
 		return nil, "", 0
 	}
 

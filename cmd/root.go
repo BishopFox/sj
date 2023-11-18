@@ -7,6 +7,7 @@ import (
 var apiTarget string
 var basePath string
 var format string
+var insecure bool
 var localFile string
 var proxy string
 var quiet bool
@@ -34,7 +35,7 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 	},
-	Version: "1.0.3",
+	Version: "1.0.4",
 }
 
 func Execute() {
@@ -49,6 +50,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the spec (i.e. /V2/)")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the documentation (json/yaml/yml/js).")
 	rootCmd.PersistentFlags().StringArrayVarP(&Headers, "headers", "H", nil, "Add custom headers, separated by a colon (\"Name: Value\"). Multiple flags are accepted.")
+	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Ignores server certificate validation.")
 	rootCmd.PersistentFlags().StringVarP(&localFile, "local-file", "l", "", "Loads the documentation from a local file.")
 	rootCmd.PersistentFlags().StringVarP(&proxy, "proxy", "p", "NOPROXY", "Proxy host and port. Example: http://127.0.0.1:8080")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")

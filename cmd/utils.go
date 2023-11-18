@@ -19,8 +19,10 @@ import (
 func CheckAndConfigureProxy() (client http.Client) {
 	var proxyUrl *url.URL
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	transport := &http.Transport{}
+
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	if proxy != "NOPROXY" {
