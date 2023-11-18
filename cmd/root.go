@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -34,8 +35,11 @@ Generate a list of raw API routes for use with custom scripts:
 $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 
 	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) < 1 {
+			log.Error("Command not specified. See the --help flag for usage.")
+		}
 	},
-	Version: "1.0.4",
+	Version: "1.0.5",
 }
 
 func Execute() {
