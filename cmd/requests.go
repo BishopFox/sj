@@ -15,7 +15,7 @@ var (
 	accept                 string
 	avoidDangerousRequests string
 	contentType            string
-	dangerousStrings       []string = []string{"add", "build", "buy", "create", "delete", "destroy", "edit", "erase", "execute", "insert", "modify", "order", "purchase", "rebuild", "remove", "reset", "restart", "run", "sell", "send", "start", "stop", "update", "upload"}
+	dangerousStrings       []string = []string{"add", "block", "build", "buy", "change", "clear", "create", "delete", "destroy", "edit", "emergency", "erase", "execute", "insert", "modify", "order", "purchase", "rebuild", "remove", "reset", "restart", "revoke", "run", "sell", "send", "set", "start", "stop", "update", "upload"}
 	Headers                []string
 	requestStatus          int
 	riskSurveyed           bool = false

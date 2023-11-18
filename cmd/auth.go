@@ -26,7 +26,16 @@ func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName s
 	}
 
 	for mechanism := range doc3.Components.SecuritySchemes {
-		fmt.Printf("    - %s (%s)\n", mechanism, doc3.Components.SecuritySchemes[mechanism].Value.Scheme)
+		if doc3.Components.SecuritySchemes[mechanism].Value == nil {
+			log.Error("Authorization schema structure unsupported. Manual testing is required.")
+			return false, "", ""
+		}
+		if doc3.Components.SecuritySchemes[mechanism].Value.Scheme != "" {
+			fmt.Printf("    - %s (%s)\n", mechanism, doc3.Components.SecuritySchemes[mechanism].Value.Scheme)
+		} else {
+			fmt.Printf("    - %s\n", mechanism)
+		}
+
 		if doc3.Components.SecuritySchemes[mechanism].Value.Type == "http" && !quiet {
 			if doc3.Components.SecuritySchemes[mechanism].Value.Scheme == "basic" {
 				log.Infof("Basic Authentication is accepted. Supply a username and password? (y/N)")

@@ -136,7 +136,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 				body := make(map[string]any)
 
 				for _, param := range op.Parameters {
-					if param.Ref != "" && param.Value == nil {
+					if param.Ref != "" || param.Value == nil {
 						continue
 					} else if param.Value.In == "path" {
 						newPath = strings.ReplaceAll(newPath, "{"+param.Value.Name+"}", "test")
@@ -176,7 +176,11 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 				var errorDescriptions = make(map[any]string)
 				for status := range op.Responses {
 					if op.Responses[status].Ref == "" {
-						errorDescriptions[status] = *op.Responses[status].Value.Description
+						if op.Responses[status].Value == nil {
+							continue
+						} else {
+							errorDescriptions[status] = *op.Responses[status].Value.Description
+						}
 					} else {
 						continue
 					}
