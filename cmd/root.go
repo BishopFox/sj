@@ -39,7 +39,7 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.0.5",
+	Version: "1.1.0",
 }
 
 func Execute() {

@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi2"
 	"github.com/getkin/kin-openapi/openapi2conv"
@@ -15,6 +18,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
+
+var specJSON string
 
 func CheckAndConfigureProxy() (client http.Client) {
 	var proxyUrl *url.URL
@@ -91,6 +96,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 	var apiKey string
 	var apiKeyName string
 	var apiInQuery bool = false
+	var resultsJSON []string
 	var pathMap = make(map[string]bool)
 	var paths []string
 
@@ -104,6 +110,10 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 		// Prints Title/Description values if they exist
 		PrintSpecInfo(*newDoc.Info)
 		apiInQuery, apiKey, apiKeyName = CheckSecDefs(*newDoc)
+	}
+
+	if command == "automate" && outputFile != "" {
+		WriteJSONFile(`"results":[`, false)
 	}
 
 	for path, pathItem := range newDoc.Paths {
@@ -190,10 +200,20 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 
 				u.Path = u.Path + newPath
 				u.RawQuery = query.Encode()
-
 				if command == "automate" {
 					_, _, sc := MakeRequest(client, method, u.String(), timeout, bytes.NewReader([]byte(bodyData)))
-					writeLog(sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
+					if outputFile != "" {
+						result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
+						WriteJSONFile(result, false)
+						time.Sleep(1 * time.Second)
+					} else {
+						if strings.ToLower(outputFormat) != "console" {
+							resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
+						} else {
+							writeLog(sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
+						}
+					}
+					//time.Sleep(3 * time.Second)
 				} else if command == "prepare" {
 					if bodyData == nil {
 						if len(Headers) == 0 {
@@ -221,6 +241,15 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 			}
 		}
 	}
+
+	if command == "automate" && outputFile != "" {
+		WriteJSONFile(",", true)
+		log.Infof("Results written to %s", outputFile)
+	} else if outputFile == "" && strings.ToLower(outputFormat) == "json" {
+		results := strings.Join(resultsJSON, ",")
+		fmt.Printf(`%s"results":[%s]}%s`, specJSON, results, "\n")
+	}
+
 	return paths
 }
 
@@ -257,12 +286,19 @@ func GetBasePath(servers openapi3.Servers, host string) (bp string) {
 }
 
 func PrintSpecInfo(i openapi3.Info) {
-	if i.Title != "" {
-		fmt.Println("Title:", i.Title)
-	}
+	specJSON = fmt.Sprintf(`{"title":"%s","description":"%s",`, i.Title, i.Description)
+	if outputFile != "" {
+		WriteJSONFile(specJSON, false)
+	} else if strings.ToLower(outputFormat) == "json" {
+		// Do nothing
+	} else if strings.ToLower(outputFormat) == "console" {
+		if i.Title != "" {
+			fmt.Println("Title:", i.Title)
+		}
 
-	if i.Description != "" {
-		fmt.Printf("Description: %s\n\n", i.Description)
+		if i.Description != "" {
+			fmt.Printf("Description: %s\n\n", i.Description)
+		}
 	}
 }
 
@@ -316,4 +352,49 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 		}
 		return newDoc
 	}
+}
+
+func WriteJSONFile(result string, end bool) {
+	if end {
+		file, err := os.OpenFile(outputFile, os.O_RDWR, 0644)
+
+		if err != nil {
+			fmt.Println("File does not exist or cannot be created")
+			os.Exit(1)
+		}
+		defer file.Close()
+
+		w := bufio.NewWriter(file)
+
+		fileInfo, err := file.Stat()
+		if err != nil {
+			log.Error("Failed to get file info:", err)
+		}
+		fileSize := fileInfo.Size()
+		if fileSize != 0 {
+			lastChar := fileSize - 1
+
+			_, err = file.Seek(lastChar, 0)
+			if err != nil {
+				log.Error("Error seeking to last character", err)
+			}
+			fmt.Fprintf(w, "]}\n")
+
+		}
+		w.Flush()
+	} else {
+		file, err := os.OpenFile(outputFile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+
+		if err != nil {
+			fmt.Println("File does not exist or cannot be created")
+			os.Exit(1)
+		}
+		defer file.Close()
+
+		w := bufio.NewWriter(file)
+
+		fmt.Fprintf(w, "%s", result)
+		w.Flush()
+	}
+
 }
