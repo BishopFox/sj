@@ -49,6 +49,6 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 }
 
 func init() {
-	automateCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "F", "json", "The output format. Only 'console' (default) and 'json' are supported at the moment.")
+	automateCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "F", "console", "The output format. Only 'console' (default) and 'json' are supported at the moment.")
 	automateCmd.PersistentFlags().StringVarP(&outputFile, "outfile", "o", "", "Output the results to a file. This defaults to a JSON file unless an output format (-F) is specified.")
 }
