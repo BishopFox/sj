@@ -50,6 +50,7 @@ func init() {
 	rootCmd.AddCommand(automateCmd)
 	rootCmd.AddCommand(endpointsCmd)
 	rootCmd.AddCommand(prepareCmd)
+	rootCmd.AddCommand(bruteCmd)
 	rootCmd.PersistentFlags().StringVarP(&UserAgent, "agent", "a", "Swagger Jacker (github.com/BishopFox/sj)", "Set the User-Agent string.")
 	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the spec (i.e. /V2/)")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the documentation (json/yaml/yml/js).")
