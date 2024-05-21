@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +22,7 @@ var (
 		"/docs",
 		"",
 		"/swagger",
+		"/swagger/docs",
 		"/swagger/v1",
 		"/swagger/v2",
 		"/swagger/v3",
@@ -49,15 +50,8 @@ var (
 		"/docs/v1",
 		"/docs/v2",
 		"/docs/v3",
+		"/public",
 		"/graphql",
-	}
-	swaggerFileExtensions = []string{
-		"",
-		"/",
-		".json",
-		".html",
-		".yaml",
-		".yml",
 	}
 	swaggerJsonEndpoints = []string{
 		"",
@@ -78,6 +72,7 @@ var (
 		"/graphql",
 		"/apispec",
 		"/apispec_1",
+		"/api-merged",
 	}
 	swaggerJavascriptEndpoints = []string{
 		"/swagger-ui-init",
@@ -146,7 +141,7 @@ func makeRequests(urls []string, client *http.Client, contentTypeToFind string) 
 		requestCount := 1
 		fmt.Printf("[*] SEARCHING FOR Content-Type == %s\n", contentTypeToFind)
 		for _, url := range urls {
-			fmt.Printf("[*] Request #%d: \t%s\n", requestCount, url)
+			//fmt.Printf("[*] Request #%d: \t%s\n", requestCount, url)
 			req, err := http.NewRequest("GET", url, nil)
 			if err != nil {
 				log.Printf("[!] Error creating request for %s: %v", url, err)
@@ -176,7 +171,7 @@ func makeRequests(urls []string, client *http.Client, contentTypeToFind string) 
 
 					if responseSize >= 8 {
 						// Create a new ReadCloser with the original body content
-						resp.Body = ioutil.NopCloser(strings.NewReader(string(body)))
+						resp.Body = io.NopCloser(strings.NewReader(string(body)))
 						responses <- resp
 					} else {
 						resp.Body.Close() // Close the body if the response size is too small
@@ -209,11 +204,10 @@ func lookForSpecIndicator(response *http.Response) bool {
 
 func lookForSpecIndicatorJavaScript(response *http.Response) (bool, map[string]interface{}) {
 	defer response.Body.Close() // Ensure the body is closed after reading
-	//regexPattern := regexp.MustCompile(`let\s+(\w+)\s*=\s*({.*?});`)
 	regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
 
 	jsContent, err := io.ReadAll(response.Body)
-	//fmt.Println(string(jsContent))
+
 	if err != nil {
 		log.Printf("Error reading response body: %v", err)
 		return false, nil
@@ -268,13 +262,12 @@ func doJavaScriptRequestsLoop(urls []string, client *http.Client) (bool, map[str
 }
 
 var outputSpecFile string
-var target string
+var target string = swaggerURL
 var bruteCmd = &cobra.Command{
 	Use:   "brute",
 	Short: "Sends a series of automated requests to discover the spec file.",
-	Long: `The automate command sends a request to the target to find the spec file based on historic file locations.
-This enables the user to get a quick look at which endpoints require authentication and which ones do not. If a request
-responds in an abnormal way, manual testing should be conducted (prepare manual tests using the "prepare" command).`,
+	Long: `The brute command sends requests to the target to find the spec file based on historic file locations.
+This will first check for specfiles embedded within javascript and then continue on to look for json specfiles.`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		client := &http.Client{}
@@ -289,7 +282,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			if err != nil {
 				log.Fatalf("Error marshalling API doc: %v", err)
 			}
-			if err := ioutil.WriteFile(outputSpecFile, file, 0644); err != nil {
+			if err := os.WriteFile(outputSpecFile, file, 0644); err != nil {
 				log.Fatalf("Error writing to file: %v", err)
 			}
 			return
@@ -311,29 +304,30 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 		}
 
 		// Not sure if YAML and YML files will need to be processed differently... could exclude these.
-		yamlUrls := makeUrls(target, swaggerPrefixDirs, swaggerJsonEndpoints, ".yaml")
-		if doJsonRequestsLoop(yamlUrls, client) {
-			return
-		}
+		//yamlUrls := makeUrls(target, swaggerPrefixDirs, swaggerJsonEndpoints, ".yaml")
+		//if doJsonRequestsLoop(yamlUrls, client) {
+		//	return
+		//}
 
-		ymlUrls := makeUrls(target, swaggerPrefixDirs, swaggerJsonEndpoints, ".yml")
-		if doJsonRequestsLoop(ymlUrls, client) {
-			return
-		}
+		//ymlUrls := makeUrls(target, swaggerPrefixDirs, swaggerJsonEndpoints, ".yml")
+		//if doJsonRequestsLoop(ymlUrls, client) {
+		//	return
+		//}
 
 		slashUrls := makeUrls(target, swaggerPrefixDirs, swaggerJsonEndpoints, "/")
 		if doJsonRequestsLoop(slashUrls, client) {
 			return
 		}
+
 		// Should maybe add code to just copy the specfile locally even if it is found to just be a json file because it will make automating easier.
 
 		// Should add a flag here to check if automate is true and if so than call the 'sj automate' function with the specfile that is copied locally.
-
+		fmt.Printf("[!] NO SPECFILE FOUND for:\t%s\n", target)
 	},
 }
 
 func init() {
 	bruteCmd.PersistentFlags().StringVarP(&outputSpecFile, "outfile", "o", "spec_file.json", "Output the results to a file. This defaults to a JSON file unless an output format (-F) is specified.")
-	bruteCmd.PersistentFlags().StringVarP(&target, "target", "x", "", "The target you want to perform brute force spec finding on.")
+
 	//Should add a flag here called something like 'automate' which is a boolean that defaults to false. But when present it is set to true and then it will cause the program to do 'sj automate' on the found spec file automatically.
 }
