@@ -262,7 +262,6 @@ func doJavaScriptRequestsLoop(urls []string, client *http.Client) (bool, map[str
 }
 
 var outputSpecFile string
-var target string = swaggerURL
 var bruteCmd = &cobra.Command{
 	Use:   "brute",
 	Short: "Sends a series of automated requests to discover the spec file.",
@@ -274,6 +273,7 @@ This will first check for specfiles embedded within javascript and then continue
 		client.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
+		var target string = swaggerURL
 
 		javascriptUrls := makeUrls(target, swaggerPrefixDirs, swaggerJavascriptEndpoints, ".js")
 		specFound, apiDoc := doJavaScriptRequestsLoop(javascriptUrls, client)
