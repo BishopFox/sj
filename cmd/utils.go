@@ -19,6 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var accessibleEndpoints []string
 var specJSON string
 
 func CheckAndConfigureProxy() (client http.Client) {
@@ -202,18 +203,34 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 				u.RawQuery = query.Encode()
 				if command == "automate" {
 					_, _, sc := MakeRequest(client, method, u.String(), timeout, bytes.NewReader([]byte(bodyData)))
+					if sc == 200 {
+						accessibleEndpointFound = true
+						accessibleEndpoints = append(accessibleEndpoints, u.String())
+					}
 					if outputFile != "" {
-						result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
-						WriteJSONFile(result, false)
-						time.Sleep(1 * time.Second)
-					} else {
-						if strings.ToLower(outputFormat) != "console" {
-							resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
+						if getAccessibleEndpoints {
+							if sc == 200 {
+								result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
+								WriteJSONFile(result, false)
+							}
 						} else {
+							result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
+							WriteJSONFile(result, false)
+						}
+						time.Sleep(1 * time.Second)
+					} else if outputFile == "" {
+						if strings.ToLower(outputFormat) != "console" {
+							if getAccessibleEndpoints {
+								if sc == 200 {
+									resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
+								}
+							} else {
+								resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
+							}
+						} else if !getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
 							writeLog(sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
 						}
 					}
-					//time.Sleep(3 * time.Second)
 				} else if command == "prepare" {
 					if bodyData == nil {
 						if len(Headers) == 0 {
@@ -242,12 +259,36 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 		}
 	}
 
-	if command == "automate" && outputFile != "" {
-		WriteJSONFile(",", true)
-		log.Infof("Results written to %s", outputFile)
-	} else if outputFile == "" && strings.ToLower(outputFormat) == "json" {
-		results := strings.Join(resultsJSON, ",")
-		fmt.Printf(`%s"results":[%s]}%s`, specJSON, results, "\n")
+	if command == "automate" {
+		if outputFile == "" && getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
+			var isDuplicateEndpoint bool
+			var printedEndpoints []string
+			if accessibleEndpoints != nil {
+				log.Infof("Accessible endpoints:\n")
+				for i := range accessibleEndpoints {
+					for j := range printedEndpoints {
+						if accessibleEndpoints[i] == printedEndpoints[j] {
+							isDuplicateEndpoint = true
+						}
+					}
+					if !isDuplicateEndpoint {
+						fmt.Printf("    %s\n", accessibleEndpoints[i])
+						printedEndpoints = append(printedEndpoints, accessibleEndpoints[i])
+					}
+					isDuplicateEndpoint = false
+				}
+			}
+		} else if outputFile == "" && strings.ToLower(outputFormat) == "json" {
+			results := strings.Join(resultsJSON, ",")
+			fmt.Printf(`%s"results":[%s]}%s`, specJSON, results, "\n")
+		} else if outputFile != "" {
+			if accessibleEndpoints == nil {
+				WriteJSONFile("]}\n", false)
+			} else {
+				WriteJSONFile(",", true)
+			}
+			log.Infof("Results written to %s", outputFile)
+		}
 	}
 
 	return paths
@@ -289,8 +330,6 @@ func PrintSpecInfo(i openapi3.Info) {
 	specJSON = fmt.Sprintf(`{"title":"%s","description":"%s",`, i.Title, i.Description)
 	if outputFile != "" {
 		WriteJSONFile(specJSON, false)
-	} else if strings.ToLower(outputFormat) == "json" {
-		// Do nothing
 	} else if strings.ToLower(outputFormat) == "console" {
 		if i.Title != "" {
 			fmt.Println("Title:", i.Title)

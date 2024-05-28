@@ -15,7 +15,7 @@ var (
 	accept                 string
 	avoidDangerousRequests string
 	contentType            string
-	dangerousStrings       []string = []string{"add", "block", "build", "buy", "change", "clear", "create", "delete", "destroy", "edit", "emergency", "erase", "execute", "insert", "modify", "order", "purchase", "rebuild", "remove", "reset", "restart", "revoke", "run", "sell", "send", "set", "start", "stop", "update", "upload"}
+	dangerousStrings       []string = []string{"add", "block", "build", "buy", "change", "clear", "create", "delete", "deploy", "destroy", "drop", "edit", "emergency", "erase", "execute", "insert", "modify", "order", "overwrite", "pause", "purchase", "rebuild", "remove", "replace", "reset", "restart", "revoke", "run", "sell", "send", "set", "start", "stop", "update", "upload", "write"}
 	Headers                []string
 	requestStatus          int
 	riskSurveyed           bool = false
@@ -99,7 +99,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		return nil, "", 0
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		log.Error("Error: response not received.\n", err)
-		if strings.Contains(fmt.Sprint(err), "tls") {
+		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			fmt.Println("Try supplying the --insecure flag.")
 		}
 		return nil, "", 0

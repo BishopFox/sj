@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var accessibleEndpointFound bool
 var apiTarget string
 var basePath string
 var format string
