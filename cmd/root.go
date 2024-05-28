@@ -40,7 +40,7 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.2.0",
+	Version: "1.3.0",
 }
 
 func Execute() {
@@ -51,6 +51,7 @@ func init() {
 	rootCmd.AddCommand(automateCmd)
 	rootCmd.AddCommand(endpointsCmd)
 	rootCmd.AddCommand(prepareCmd)
+	rootCmd.AddCommand(bruteCmd)
 	rootCmd.PersistentFlags().StringVarP(&UserAgent, "agent", "a", "Swagger Jacker (github.com/BishopFox/sj)", "Set the User-Agent string.")
 	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the spec (i.e. /V2/)")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the documentation (json/yaml/yml/js).")
