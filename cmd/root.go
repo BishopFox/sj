@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var accessibleEndpointFound bool
 var apiTarget string
 var basePath string
 var format string
@@ -39,7 +40,7 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.1.1",
+	Version: "1.2.0",
 }
 
 func Execute() {
