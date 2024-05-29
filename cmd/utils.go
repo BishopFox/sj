@@ -113,7 +113,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 		apiInQuery, apiKey, apiKeyName = CheckSecDefs(*newDoc)
 	}
 
-	if command == "automate" && outputFile != "" {
+	if command == "automate" && outfile != "" {
 		WriteJSONFile(`"results":[`, false)
 	}
 
@@ -207,7 +207,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 						accessibleEndpointFound = true
 						accessibleEndpoints = append(accessibleEndpoints, u.String())
 					}
-					if outputFile != "" {
+					if outfile != "" {
 						if getAccessibleEndpoints {
 							if sc == 200 {
 								result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
@@ -218,7 +218,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 							WriteJSONFile(result, false)
 						}
 						time.Sleep(1 * time.Second)
-					} else if outputFile == "" {
+					} else if outfile == "" {
 						if strings.ToLower(outputFormat) != "console" {
 							if getAccessibleEndpoints {
 								if sc == 200 {
@@ -260,7 +260,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 	}
 
 	if command == "automate" {
-		if outputFile == "" && getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
+		if outfile == "" && getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
 			var isDuplicateEndpoint bool
 			var printedEndpoints []string
 			if accessibleEndpoints != nil {
@@ -278,16 +278,16 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 					isDuplicateEndpoint = false
 				}
 			}
-		} else if outputFile == "" && strings.ToLower(outputFormat) == "json" {
+		} else if outfile == "" && strings.ToLower(outputFormat) == "json" {
 			results := strings.Join(resultsJSON, ",")
 			fmt.Printf(`%s"results":[%s]}%s`, specJSON, results, "\n")
-		} else if outputFile != "" {
+		} else if outfile != "" {
 			if accessibleEndpoints == nil {
 				WriteJSONFile("]}\n", false)
 			} else {
 				WriteJSONFile(",", true)
 			}
-			log.Infof("Results written to %s", outputFile)
+			log.Infof("Results written to %s", outfile)
 		}
 	}
 
@@ -328,7 +328,7 @@ func GetBasePath(servers openapi3.Servers, host string) (bp string) {
 
 func PrintSpecInfo(i openapi3.Info) {
 	specJSON = fmt.Sprintf(`{"title":"%s","description":"%s",`, i.Title, i.Description)
-	if outputFile != "" {
+	if outfile != "" {
 		WriteJSONFile(specJSON, false)
 	} else if strings.ToLower(outputFormat) == "console" {
 		if i.Title != "" {
@@ -395,7 +395,7 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 
 func WriteJSONFile(result string, end bool) {
 	if end {
-		file, err := os.OpenFile(outputFile, os.O_RDWR, 0644)
+		file, err := os.OpenFile(outfile, os.O_RDWR, 0644)
 
 		if err != nil {
 			fmt.Println("File does not exist or cannot be created")
@@ -422,7 +422,7 @@ func WriteJSONFile(result string, end bool) {
 		}
 		w.Flush()
 	} else {
-		file, err := os.OpenFile(outputFile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+		file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 
 		if err != nil {
 			fmt.Println("File does not exist or cannot be created")

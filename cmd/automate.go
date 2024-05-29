@@ -12,7 +12,6 @@ import (
 )
 
 var getAccessibleEndpoints bool
-var outputFile string
 var outputFormat string
 var automateCmd = &cobra.Command{
 	Use:   "automate",
@@ -22,8 +21,8 @@ This enables the user to get a quick look at which endpoints require authenticat
 responds in an abnormal way, manual testing should be conducted (prepare manual tests using the "prepare" command).`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		if outputFile != "" && strings.ToLower(outputFormat) != "" {
-			if !strings.HasSuffix(strings.ToLower(outputFile), "json") && strings.ToLower(outputFormat) != "json" {
+		if outfile != "" && strings.ToLower(outputFormat) != "" {
+			if !strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) != "json" {
 				log.Fatal("Only the JSON output format is supported at the moment.")
 			}
 		}
@@ -53,6 +52,5 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 func init() {
 	automateCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "F", "console", "The output format. Only 'console' (default) and 'json' are supported at the moment.")
-	automateCmd.PersistentFlags().StringVarP(&outputFile, "outfile", "o", "", "Output the results to a file. This defaults to a JSON file unless an output format (-F) is specified.")
 	automateCmd.PersistentFlags().BoolVar(&getAccessibleEndpoints, "get-accessible-endpoints", false, "Only output the accessible endpoints (those that return a 200 status code).")
 }

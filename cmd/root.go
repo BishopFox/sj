@@ -11,8 +11,10 @@ var basePath string
 var format string
 var insecure bool
 var localFile string
+var outfile string
 var proxy string
 var quiet bool
+var randomUserAgent bool
 var swaggerURL string
 var timeout int64
 
@@ -40,7 +42,7 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.3.0",
+	Version: "1.3.1",
 }
 
 func Execute() {
@@ -58,8 +60,10 @@ func init() {
 	rootCmd.PersistentFlags().StringArrayVarP(&Headers, "headers", "H", nil, "Add custom headers, separated by a colon (\"Name: Value\"). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Ignores server certificate validation.")
 	rootCmd.PersistentFlags().StringVarP(&localFile, "local-file", "l", "", "Loads the documentation from a local file.")
+	rootCmd.PersistentFlags().StringVarP(&outfile, "outfile", "o", "", "Output the results to a file. Only supported for the 'automate' and 'brute' commands at this time.")
 	rootCmd.PersistentFlags().StringVarP(&proxy, "proxy", "p", "NOPROXY", "Proxy host and port. Example: http://127.0.0.1:8080")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")
+	rootCmd.PersistentFlags().BoolVarP(&randomUserAgent, "randomize-user-agent", "r", false, "Randomizes the user agent string. Default is 'false'.")
 	rootCmd.PersistentFlags().StringVarP(&apiTarget, "target", "T", "", "Manually set a target for the requests to be made if separate from the host the documentation resides on.")
 	rootCmd.PersistentFlags().Int64VarP(&timeout, "timeout", "t", 30, "Set the request timeout period.")
 	rootCmd.PersistentFlags().StringVarP(&swaggerURL, "url", "u", "", "Loads the documentation file from a URL")

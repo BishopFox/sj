@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -20,13 +21,40 @@ var (
 	requestStatus          int
 	riskSurveyed           bool = false
 	UserAgent              string
-	userChoice             string
+	userAgents             []string = []string{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.2 Safari/605.1.15",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0",
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.141 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101 Firefox/73.0",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/74.0",
+		"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:75.0) Gecko/20100101 Firefox/75.0",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.4 Safari/605.1.15",
+		"Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36 Edge/16.16299",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:76.0) Gecko/20100101 Firefox/76.0",
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.92 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.99 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36",
+		"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17134",
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:78.0) Gecko/20100101 Firefox/78.0",
+	}
+	userChoice string
 )
 
 func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int) {
 	if quiet {
 		avoidDangerousRequests = "y"
 	}
+
 	for _, v := range dangerousStrings {
 		if strings.Contains(target, v) {
 			userChoice = ""
@@ -75,7 +103,15 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		}
 	}
 
-	if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+	if randomUserAgent {
+		if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+			log.Fatalf("Cannot set a User Agent while supplying the 'random-user-agent' flag.")
+		} else {
+			rand.New(rand.NewSource(time.Now().UnixNano()))
+			UserAgent = userAgents[rand.Intn(len(userAgents))]
+			req.Header.Set("User-Agent", UserAgent)
+		}
+	} else if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
 		req.Header.Set("User-Agent", UserAgent)
 	}
 
@@ -110,4 +146,32 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	requestStatus = resp.StatusCode
 
 	return bodyBytes, bodyString, requestStatus
+}
+
+func CheckContentType(client http.Client, url string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil && err != context.Canceled && err != io.EOF {
+		log.Fatal("Error: could not create HTTP request - ", err)
+	}
+
+	resp, err := client.Do(req.WithContext(ctx))
+	if err == context.DeadlineExceeded {
+		log.Printf("Error: %s - skipping request.", err)
+		return ""
+	} else if err != nil && err != context.Canceled && err != io.EOF {
+		log.Error("Error: response not received.\n", err)
+		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
+			fmt.Println("Try supplying the --insecure flag.")
+		}
+		return ""
+	}
+	// DEBUG
+	if resp.Header.Get("Content-Type") != "" {
+		fmt.Println("DEBUG: Content-Type:", resp.Header.Get("Content-Type"))
+	}
+	// END DEBUG
+	return resp.Header.Get("Content-Type")
 }
