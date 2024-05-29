@@ -6,6 +6,7 @@ It does this by parsing the definition file for paths, parameters, and accepted 
 - `automate` - Crafts a series of requests and analyzes the status code of the response.
 - `prepare` - Generates a list of commands to use for manual testing.
 - `endpoints` - Generates a list of raw API routes. *Path values will not be replaced with test data*.
+- `brute` - Sends a series of requests to a target to find operation definitions based on commonly used file paths.
 
 ## Build
 
@@ -38,6 +39,14 @@ $ go install github.com/BishopFox/sj@latest
 > Use the `endpoints` command to generate a list of raw endpoints from the provided definition file.
 
 ![Endpoints Command](img/sj-endpoints.gif)
+
+> Use the `brute` command to send a series of requests in an attempt to find a definition file on the target.
+
+```bash
+$ sj brute -u https://<TARGET>
+INFO[0000] Sending 2045 requests. This could take a while... 
+INFO[0111] Found operation definitions embedded in JavaScript file at https://<TARGET>/example.js 
+```
 
 ## Help
 
