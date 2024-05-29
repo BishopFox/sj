@@ -168,10 +168,5 @@ func CheckContentType(client http.Client, url string) string {
 		}
 		return ""
 	}
-	// DEBUG
-	if resp.Header.Get("Content-Type") != "" {
-		fmt.Println("DEBUG: Content-Type:", resp.Header.Get("Content-Type"))
-	}
-	// END DEBUG
 	return resp.Header.Get("Content-Type")
 }

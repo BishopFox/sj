@@ -134,8 +134,7 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 var bruteCmd = &cobra.Command{
 	Use:   "brute",
 	Short: "Sends a series of automated requests to discover the spec file.",
-	Long: `The brute command sends requests to the target to find the spec file based on historic file locations.
-This will first check for specfiles embedded within javascript and then continue on to look for json specfiles.`,
+	Long:  `The brute command sends requests to the target to find operation definitions based on commonly used file locations.`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		client := CheckAndConfigureProxy()
