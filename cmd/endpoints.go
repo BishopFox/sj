@@ -25,7 +25,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 		log.Infof("Gathering endpoints.\n\n")
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil, "endpoints")
 			paths = GenerateRequests(bodyBytes, client, "endpoints")
 		} else {
 			specFile, err := os.Open(localFile)

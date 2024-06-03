@@ -20,7 +20,7 @@ This enables you to test specific API functions for common vulnerabilities or mi
 		fmt.Printf("\n")
 		log.Infof("Gathering API details.\n\n")
 		if swaggerURL != "" {
-			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil, "prepare")
 			GenerateRequests(bodyBytes, client, "prepare")
 		} else {
 			specFile, err := os.Open(localFile)

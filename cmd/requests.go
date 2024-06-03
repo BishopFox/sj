@@ -50,13 +50,13 @@ var (
 	userChoice string
 )
 
-func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int) {
+func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader, command string) ([]byte, string, int) {
 	if quiet {
 		avoidDangerousRequests = "y"
 	}
 
 	for _, v := range dangerousStrings {
-		if strings.Contains(target, v) {
+		if command == "automate" && strings.Contains(target, v) {
 			userChoice = ""
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0
@@ -136,7 +136,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		log.Error("Error: response not received.\n", err)
 		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
-			fmt.Println("Try supplying the --insecure flag.")
+			log.Fatal("Try supplying the --insecure flag.")
 		}
 		return nil, "", 0
 	}

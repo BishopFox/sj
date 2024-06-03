@@ -37,7 +37,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 		}
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil, "automate")
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {

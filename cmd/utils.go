@@ -202,7 +202,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 				u.Path = u.Path + newPath
 				u.RawQuery = query.Encode()
 				if command == "automate" {
-					_, _, sc := MakeRequest(client, method, u.String(), timeout, bytes.NewReader([]byte(bodyData)))
+					_, _, sc := MakeRequest(client, method, u.String(), timeout, bytes.NewReader([]byte(bodyData)), command)
 					if sc == 200 {
 						accessibleEndpointFound = true
 						accessibleEndpoints = append(accessibleEndpoints, u.String())

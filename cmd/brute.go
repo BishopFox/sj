@@ -101,19 +101,19 @@ func makeURLs(target string, endpoints []string, fileExtension string) []string 
 }
 
 func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
-	for _, url := range urls {
+	for i, url := range urls {
 		ct := CheckContentType(client, url)
 		if strings.Contains(ct, "application/json") {
-			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
+			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil, "brute")
 			if bodyBytes != nil {
 				checkSpec := UnmarshalSpec(bodyBytes)
 				if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
-					log.Infof("Definition file found: %s\n", url)
+					log.Infof("\nDefinition file found: %s\n", url)
 					return true, checkSpec
 				}
 			}
 		} else if strings.Contains(ct, "application/javascript") {
-			bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil)
+			bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil, "brute")
 			if bodyBytes != nil {
 				regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
 				matches := regexPattern.FindAllStringSubmatch(bodyString, -1)
@@ -121,12 +121,18 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 					jsonContent := match[2]
 					checkSpec := UnmarshalSpec([]byte(jsonContent))
 					if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
-						log.Infof("Found operation definitions embedded in JavaScript file at %s\n", url)
+						log.Infof("\nFound operation definitions embedded in JavaScript file at %s\n", url)
 						return true, checkSpec
 					}
 				}
 			}
 		}
+		if i+1 == len(urls) {
+			fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
+		} else {
+			fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
+		}
+
 	}
 	return false, nil
 }
