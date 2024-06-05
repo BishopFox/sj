@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -55,8 +56,10 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		avoidDangerousRequests = "y"
 	}
 
+	u, _ := url.Parse(target)
+	endpoint := u.RawPath + "?" + u.RawQuery
 	for _, v := range dangerousStrings {
-		if command == "automate" && strings.Contains(target, v) {
+		if command == "automate" && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
 			userChoice = ""
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0

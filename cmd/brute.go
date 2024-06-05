@@ -139,7 +139,7 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 
 var bruteCmd = &cobra.Command{
 	Use:   "brute",
-	Short: "Sends a series of automated requests to discover the spec file.",
+	Short: "Sends a series of automated requests to discover hidden API operation definitions.",
 	Long:  `The brute command sends requests to the target to find operation definitions based on commonly used file locations.`,
 	Run: func(cmd *cobra.Command, args []string) {
 

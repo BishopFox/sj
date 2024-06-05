@@ -15,6 +15,7 @@ var outfile string
 var proxy string
 var quiet bool
 var randomUserAgent bool
+var safeWords []string
 var swaggerURL string
 var timeout int64
 
@@ -35,14 +36,17 @@ Generate a list of curl commands to use for manual testing:
 $ sj prepare -u https://petstore.swagger.io/v2/swagger.json
 
 Generate a list of raw API routes for use with custom scripts:
-$ sj endpoints -u https://petstore.swagger.io/v2/swagger.json`,
+$ sj endpoints -u https://petstore.swagger.io/v2/swagger.json
+
+Perform a brute-force attack against the target to identify hidden definition files:
+$ sj brute -u https://petstore.swagger.io`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.3.3",
+	Version: "1.3.4", // Also change in .goreleaser.yaml !
 }
 
 func Execute() {
@@ -64,6 +68,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&proxy, "proxy", "p", "NOPROXY", "Proxy host and port. Example: http://127.0.0.1:8080")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")
 	rootCmd.PersistentFlags().BoolVarP(&randomUserAgent, "randomize-user-agent", "r", false, "Randomizes the user agent string. Default is 'false'.")
+	rootCmd.PersistentFlags().StringArrayVarP(&safeWords, "safe-word", "s", nil, "Avoids 'dangerous word' check for the specified word(s). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().StringVarP(&apiTarget, "target", "T", "", "Manually set a target for the requests to be made if separate from the host the documentation resides on.")
 	rootCmd.PersistentFlags().Int64VarP(&timeout, "timeout", "t", 30, "Set the request timeout period.")
 	rootCmd.PersistentFlags().StringVarP(&swaggerURL, "url", "u", "", "Loads the documentation file from a URL")
