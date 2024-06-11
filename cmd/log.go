@@ -14,6 +14,8 @@ func writeLog(sc int, target, method string, errorMsg string) {
 			logSkipped(sc, target, method)
 		} else if sc == 404 {
 			logNotFound(sc, target, method, errorMsg)
+		} else if sc == 1 {
+			logDangerous(target, method)
 		} else {
 			logManual(sc, target, method, errorMsg)
 		}
@@ -28,6 +30,14 @@ func logAccessible(status int, target, method string) {
 		"Target": target,
 		"Method": method,
 	}).Print("Endpoint accessible!")
+}
+
+func logDangerous(target, method string) {
+	log.WithFields(log.Fields{
+		"Status": "skipped",
+		"Target": target,
+		"Method": method,
+	}).Warn("Endpoint skipped due to dangerous keyword.")
 }
 
 func logManual(status int, target, method, errorMsg string) {

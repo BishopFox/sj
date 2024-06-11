@@ -117,6 +117,9 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 		WriteJSONFile(`"results":[`, false)
 	}
 
+	if newDoc.Paths == nil {
+		log.Fatalf("Could not find any defined operations. Review the file manually.")
+	}
 	for path, pathItem := range newDoc.Paths {
 		operations := map[string]*openapi3.Operation{
 			"CONNECT": pathItem.Connect,
@@ -225,7 +228,11 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 									resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
 								}
 							} else {
-								resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
+								if sc == 1 {
+									resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"Skipped due to dangerous keyword in request"}`, sc, u.String(), method))
+								} else {
+									resultsJSON = append(resultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)]))
+								}
 							}
 						} else if !getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
 							writeLog(sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
@@ -338,6 +345,10 @@ func PrintSpecInfo(i openapi3.Info) {
 		if i.Description != "" {
 			fmt.Printf("Description: %s\n\n", i.Description)
 		}
+
+		if i.Title == "" && i.Description == "" {
+			log.Warnf("Detected possible error in parsing the definition file. Title and description values are empty.\n\n")
+		}
 	}
 }
 
@@ -384,12 +395,15 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 	if strings.HasPrefix(doc3.OpenAPI, "3") {
 		newDoc := &doc3
 		return newDoc
-	} else {
+	} else if strings.HasPrefix(doc.Swagger, "2") {
 		newDoc, err := openapi2conv.ToV3(&doc)
 		if err != nil {
 			fmt.Printf("Error converting v2 document to v3: %s\n", err)
 		}
 		return newDoc
+	} else {
+		log.Fatal("Error parsing definition file.\n")
+		return nil
 	}
 }
 

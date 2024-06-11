@@ -46,7 +46,7 @@ $ sj brute -u https://petstore.swagger.io`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.3.4", // Also change in .goreleaser.yaml !
+	Version: "1.3.5",
 }
 
 func Execute() {
@@ -59,8 +59,8 @@ func init() {
 	rootCmd.AddCommand(prepareCmd)
 	rootCmd.AddCommand(bruteCmd)
 	rootCmd.PersistentFlags().StringVarP(&UserAgent, "agent", "a", "Swagger Jacker (github.com/BishopFox/sj)", "Set the User-Agent string.")
-	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the spec (i.e. /V2/)")
-	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the documentation (json/yaml/yml/js).")
+	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the definition file (i.e. /V2/).")
+	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the definition file (json/yaml/yml/js).")
 	rootCmd.PersistentFlags().StringArrayVarP(&Headers, "headers", "H", nil, "Add custom headers, separated by a colon (\"Name: Value\"). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Ignores server certificate validation.")
 	rootCmd.PersistentFlags().StringVarP(&localFile, "local-file", "l", "", "Loads the documentation from a local file.")

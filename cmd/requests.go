@@ -56,6 +56,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		avoidDangerousRequests = "y"
 	}
 
+	// Handling of dangerous keywords
 	u, _ := url.Parse(target)
 	endpoint := u.RawPath + "?" + u.RawQuery
 	for _, v := range dangerousStrings {
@@ -64,12 +65,12 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0
 			} else {
-				fmt.Printf("[!] Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
+				log.Warnf("Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
 				fmt.Scanln(&userChoice)
 				if strings.ToLower(userChoice) != "y" {
 					if !riskSurveyed {
 						avoidDangerousRequests = "y"
-						fmt.Printf("[!] Do you want to avoid all dangerous requests? (Y/n)")
+						log.Warnf("Do you want to avoid all dangerous requests? (Y/n)")
 						fmt.Scanln(&avoidDangerousRequests)
 						avoidDangerousRequests = strings.ToLower(avoidDangerousRequests)
 						riskSurveyed = true
@@ -106,6 +107,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		}
 	}
 
+	// User-Agent handling
 	if randomUserAgent {
 		if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
 			log.Fatalf("Cannot set a User Agent while supplying the 'random-user-agent' flag.")
@@ -137,9 +139,12 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		log.Printf("Error: %s - skipping request.", err)
 		return nil, "", 0
 	} else if err != nil && err != context.Canceled && err != io.EOF {
-		log.Error("Error: response not received.\n", err)
 		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			log.Fatal("Try supplying the --insecure flag.")
+		} else if strings.Contains(fmt.Sprint(err), "user canceled") {
+			return nil, "skipped", 1
+		} else {
+			log.Error("Error: response not received.\n", err)
 		}
 		return nil, "", 0
 	}

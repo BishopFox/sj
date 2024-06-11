@@ -29,3 +29,15 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+  groups:
+    - title: New Features
+      regexp: '^.*?adds(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+  include:
+    - "^adds"
+    - "^fixes"
