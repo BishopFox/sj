@@ -401,6 +401,9 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 			fmt.Printf("Error converting v2 document to v3: %s\n", err)
 		}
 		return newDoc
+	} else if os.Args[1] == "brute" {
+		var noDoc openapi3.T
+		return &noDoc
 	} else {
 		log.Fatal("Error parsing definition file.\n")
 		return nil

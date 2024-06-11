@@ -33,10 +33,10 @@ changelog:
       - "^test:"
   groups:
     - title: New Features
-      regexp: '^adds*'
+      regexp: '(?i)^adds*'
       order: 0
     - title: "Bug Fixes"
-      regexp: '^fix*'
+      regexp: '(?i)^fix*'
       order: 1
     - title: Others
       order: 999
