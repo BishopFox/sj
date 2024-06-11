@@ -1,3 +1,5 @@
+version: 2
+
 before:
   hooks:
     - go mod tidy
@@ -38,6 +40,3 @@ changelog:
       order: 1
     - title: Others
       order: 999
-  include:
-    - "^adds"
-    - "^fixes"
