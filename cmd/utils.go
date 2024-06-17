@@ -340,6 +340,10 @@ func GetBasePath(servers openapi3.Servers, host string) (bp string) {
 				basePath = "/"
 			} else {
 				basePath = servers[0].URL
+				if strings.Contains(host, ":") {
+					hostPortStart := strings.Index(host, ":")
+					host = host[0:hostPortStart]
+				}
 				if strings.Contains(basePath, host) || strings.Contains(basePath, "http") {
 					basePath = strings.ReplaceAll(basePath, host, "")
 					basePath = strings.ReplaceAll(basePath, "http://", "")

@@ -31,7 +31,7 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
-  categories:
+  groups:
     - title: "New Features"
       regexp: '^(Add|add)(s|ed|ing)?'
       order: 0
