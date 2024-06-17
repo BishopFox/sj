@@ -46,7 +46,7 @@ $ sj brute -u https://petstore.swagger.io`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.4.0",
+	Version: "1.4.1",
 }
 
 func Execute() {

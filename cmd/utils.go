@@ -277,7 +277,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
 					for k := range newDoc.Paths {
 						if !pathMap[k] {
-							paths = append(paths, k)
+							paths = append(paths, basePathResult+k)
 							pathMap[k] = true
 						}
 					}

@@ -31,12 +31,12 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
-  groups:
-    - title: New Features
-      regexp: '(?i)^add(?:s|ed|ing)?'
+  categories:
+    - title: "New Features"
+      regexp: '^(Add|add)(s|ed|ing)?'
       order: 0
     - title: "Bug Fixes"
-      regexp: '(?i)^fix(?:es|ed|ing)?'
+      regexp: '^(Fix|fix)(es|ed|ing)?'
       order: 1
-    - title: Others
+    - title: "Others"
       order: 999
