@@ -104,7 +104,7 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 	for i, url := range urls {
 		ct := CheckContentType(client, url)
 		if strings.Contains(ct, "application/json") {
-			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil, "brute")
+			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
 			if bodyBytes != nil {
 				checkSpec := UnmarshalSpec(bodyBytes)
 				if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
@@ -113,7 +113,7 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 				}
 			}
 		} else if strings.Contains(ct, "application/javascript") {
-			bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil, "brute")
+			bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil)
 			if bodyBytes != nil {
 				regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
 				matches := regexPattern.FindAllStringSubmatch(bodyString, -1)

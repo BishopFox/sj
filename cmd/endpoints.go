@@ -25,15 +25,15 @@ This list contains the raw endpoints (parameter values will not be appended or m
 		log.Infof("Gathering endpoints.\n\n")
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil, "endpoints")
-			paths = GenerateRequests(bodyBytes, client, "endpoints")
+			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			paths = GenerateRequests(bodyBytes, client)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
 				log.Fatal("Error opening file:", err)
 			}
 			bodyBytes, _ = io.ReadAll(specFile)
-			paths = GenerateRequests(bodyBytes, client, "endpoints")
+			paths = GenerateRequests(bodyBytes, client)
 		}
 		unique.Sort(unique.StringSlice{&paths})
 		for _, v := range paths {

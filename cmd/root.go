@@ -32,7 +32,7 @@ Example usage:
 Perform a quick check of endpoints which require authentication:
 $ sj automate -u https://petstore.swagger.io/v2/swagger.json
 
-Generate a list of curl commands to use for manual testing:
+Generate a list of commands to use for manual testing:
 $ sj prepare -u https://petstore.swagger.io/v2/swagger.json
 
 Generate a list of raw API routes for use with custom scripts:
@@ -46,7 +46,7 @@ $ sj brute -u https://petstore.swagger.io`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.3.6",
+	Version: "1.4.0",
 }
 
 func Execute() {

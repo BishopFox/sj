@@ -33,10 +33,10 @@ changelog:
       - "^test:"
   groups:
     - title: New Features
-      regexp: '(?i)^adds*'
+      regexp: '(?i)^add(?:s|ed|ing)?'
       order: 0
     - title: "Bug Fixes"
-      regexp: '(?i)^fix*'
+      regexp: '(?i)^fix(?:es|ed|ing)?'
       order: 1
     - title: Others
       order: 999

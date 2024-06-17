@@ -32,7 +32,7 @@ $ go install github.com/BishopFox/sj@latest
 
 ![Automate Command](img/sj-automate.gif)
 
-> Use the `prepare` command to prepare a list of curl commands for manual testing. You will likely have to modify these slightly.
+> Use the `prepare` command to prepare a list of commands for manual testing. Currently supports both `curl` and `sqlmap`. You will likely have to modify these slightly.
 
 ![Prepare Command](img/sj-prepare.gif)
 

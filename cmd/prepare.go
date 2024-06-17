@@ -12,7 +12,7 @@ import (
 var prepareCmd = &cobra.Command{
 	Use:   "prepare",
 	Short: "Prepares a set of commands for manual testing of each endpoint.",
-	Long: `The prepare command prepares a set of curl commands for manual testing of each endpoint.
+	Long: `The prepare command prepares a set of commands for manual testing of each endpoint.
 This enables you to test specific API functions for common vulnerabilities or misconfigurations.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		client := CheckAndConfigureProxy()
@@ -20,8 +20,8 @@ This enables you to test specific API functions for common vulnerabilities or mi
 		fmt.Printf("\n")
 		log.Infof("Gathering API details.\n\n")
 		if swaggerURL != "" {
-			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil, "prepare")
-			GenerateRequests(bodyBytes, client, "prepare")
+			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			GenerateRequests(bodyBytes, client)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
@@ -29,7 +29,12 @@ This enables you to test specific API functions for common vulnerabilities or mi
 			}
 
 			specBytes, _ := io.ReadAll(specFile)
-			GenerateRequests(specBytes, client, "prepare")
+			GenerateRequests(specBytes, client)
 		}
 	},
+}
+var prepareFor string
+
+func init() {
+	prepareCmd.PersistentFlags().StringVarP(&prepareFor, "external-tool", "e", "curl", "The external tool to prepare commands for. Generates syntax for 'curl' by default.")
 }

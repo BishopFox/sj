@@ -93,7 +93,7 @@ func ExtractSpecFromJS(bodyBytes []byte) []byte {
 	return bodyBytes
 }
 
-func GenerateRequests(bodyBytes []byte, client http.Client, command string) []string {
+func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 	var apiKey string
 	var apiKeyName string
 	var apiInQuery bool = false
@@ -107,13 +107,13 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 
 	// BuildObjectsFromSchemaDefinitions(*newDoc) TODO
 
-	if command != "endpoints" {
+	if os.Args[1] != "endpoints" {
 		// Prints Title/Description values if they exist
 		PrintSpecInfo(*newDoc.Info)
 		apiInQuery, apiKey, apiKeyName = CheckSecDefs(*newDoc)
 	}
 
-	if command == "automate" && outfile != "" {
+	if os.Args[1] == "automate" && outfile != "" {
 		WriteJSONFile(`"results":[`, false)
 	}
 
@@ -204,8 +204,8 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 
 				u.Path = u.Path + newPath
 				u.RawQuery = query.Encode()
-				if command == "automate" {
-					_, _, sc := MakeRequest(client, method, u.String(), timeout, bytes.NewReader([]byte(bodyData)), command)
+				if os.Args[1] == "automate" {
+					_, _, sc := MakeRequest(client, method, u.String(), timeout, bytes.NewReader([]byte(bodyData)))
 					if sc == 200 {
 						accessibleEndpointFound = true
 						accessibleEndpoints = append(accessibleEndpoints, u.String())
@@ -238,21 +238,42 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 							writeLog(sc, u.String(), method, errorDescriptions[fmt.Sprint(sc)])
 						}
 					}
-				} else if command == "prepare" {
-					if bodyData == nil {
-						if len(Headers) == 0 {
-							fmt.Printf("curl -sk -X %s '%s'\n", method, u.String())
+				} else if os.Args[1] == "prepare" {
+					if strings.ToLower(prepareFor) == "curl" {
+						if bodyData == nil {
+							if len(Headers) == 0 {
+								fmt.Printf("curl -sk -X %s '%s'\n", method, u.String())
+							} else {
+								fmt.Printf("curl -sk -X %s '%s' -H '%s'\n", method, u.String(), strings.Join(Headers, "' -H '"))
+							}
 						} else {
-							fmt.Printf("curl -sk -X %s '%s' -H '%s'\n", method, u.String(), strings.Join(Headers, "' -H '"))
+							if len(Headers) == 0 {
+								fmt.Printf("curl -sk -X %s '%s' -d '%s'\n", method, u.String(), bodyData)
+							} else {
+								fmt.Printf("curl -sk -X %s '%s' -d '%s' -H '%s'\n", method, u.String(), bodyData, strings.Join(Headers, "' -H '"))
+							}
 						}
+					} else if strings.ToLower(prepareFor) == "sqlmap" {
+						if bodyData == nil {
+							if len(Headers) == 0 {
+								fmt.Printf("sqlmap -u %s\n", u.String())
+							} else {
+								fmt.Printf("sqlmap -u %s -H '%s'\n", u.String(), strings.Join(Headers, "' -H '"))
+							}
+						} else {
+							if len(Headers) == 0 {
+								fmt.Printf("sqlmap -u %s --data='%s'\n", u.String(), bodyData)
+							} else {
+								fmt.Printf("sqlmap -u %s --data='%s' -H '%s'\n", u.String(), bodyData, strings.Join(Headers, "' -H '"))
+							}
+						}
+					} else if strings.ToLower(prepareFor) == "ffuf" {
+						// TODO
 					} else {
-						if len(Headers) == 0 {
-							fmt.Printf("curl -sk -X %s '%s' -d '%s'\n", method, u.String(), bodyData)
-						} else {
-							fmt.Printf("curl -sk -X %s '%s' -d '%s' -H '%s'\n", method, u.String(), bodyData, strings.Join(Headers, "' -H '"))
-						}
+						log.Fatal("External tool not supported. Only 'curl' and 'sqlmap' are supported options for the '-e' flag at this time.")
 					}
-				} else if command == "endpoints" {
+
+				} else if os.Args[1] == "endpoints" {
 
 					for k := range newDoc.Paths {
 						if !pathMap[k] {
@@ -266,7 +287,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, command string) []st
 		}
 	}
 
-	if command == "automate" {
+	if os.Args[1] == "automate" {
 		if outfile == "" && getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
 			var isDuplicateEndpoint bool
 			var printedEndpoints []string

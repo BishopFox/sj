@@ -37,7 +37,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 		}
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil, "automate")
+			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
@@ -46,7 +46,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 			bodyBytes, _ = io.ReadAll(specFile)
 		}
-		GenerateRequests(bodyBytes, client, "automate")
+		GenerateRequests(bodyBytes, client)
 	},
 }
 
