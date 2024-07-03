@@ -26,17 +26,18 @@ archives:
         format: zip
 
 changelog:
+  disable: false
   sort: asc
   filters:
     exclude:
       - "^docs:"
       - "^test:"
   groups:
-    - title: "New Features"
-      regexp: '^(Add|add)(s|ed|ing)?'
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
       order: 0
-    - title: "Bug Fixes"
-      regexp: '^(Fix|fix)(es|ed|ing)?'
+    - title: "Bug fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
       order: 1
-    - title: "Others"
+    - title: Others
       order: 999

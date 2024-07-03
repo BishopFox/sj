@@ -153,6 +153,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
 	requestStatus = resp.StatusCode
+	fmt.Println(resp.Status)
 
 	return bodyBytes, bodyString, requestStatus
 }

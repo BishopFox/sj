@@ -11,7 +11,7 @@ func writeLog(sc int, target, method string, errorMsg string) {
 		} else if sc == 301 || sc == 302 {
 			logRedirect(sc, target, method)
 		} else if sc == 0 {
-			logSkipped(sc, target, method)
+			logBad(sc, target, method)
 		} else if sc == 404 {
 			logNotFound(sc, target, method, errorMsg)
 		} else if sc == 1 {
@@ -70,12 +70,12 @@ func logRedirect(status int, target, method string) {
 	}).Error("Redirect detected. This likely requires authentication.")
 }
 
-func logSkipped(status int, target, method string) {
+func logBad(status int, target, method string) {
 	log.WithFields(log.Fields{
 		"Status": "N/A",
 		"Target": target,
 		"Method": method,
-	}).Warn("Request skipped (dangerous keyword found).")
+	}).Warn("Bad request (could not reach the target).")
 }
 
 func logUnauth(status int, target, method, errorMsg string) {

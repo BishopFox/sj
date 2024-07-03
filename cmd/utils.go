@@ -323,6 +323,10 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 }
 
 func GetBasePath(servers openapi3.Servers, host string) (bp string) {
+	if strings.Contains(host, ":") {
+		hostPortStart := strings.Index(host, ":")
+		host = host[0:hostPortStart]
+	}
 	if basePath == "" {
 		if servers != nil {
 			s1, _ := url.Parse(servers[0].URL)
@@ -338,12 +342,17 @@ func GetBasePath(servers openapi3.Servers, host string) (bp string) {
 			}
 			if servers[0].URL == "/" {
 				basePath = "/"
+			} else if strings.Contains(servers[0].URL, "http") && !strings.Contains(servers[0].URL, host) { // Check to see if the server object being used for the base path contains a different host than the target
+				basePath = servers[0].URL
+				basePath = strings.ReplaceAll(basePath, "http://", "")
+				basePath = strings.ReplaceAll(basePath, "https://", "")
+				indexSubdomain := strings.Index(basePath, "/")
+				basePath = basePath[indexSubdomain:]
+				if !strings.HasSuffix(basePath, "/") {
+					basePath = basePath + "/"
+				}
 			} else {
 				basePath = servers[0].URL
-				if strings.Contains(host, ":") {
-					hostPortStart := strings.Index(host, ":")
-					host = host[0:hostPortStart]
-				}
 				if strings.Contains(basePath, host) || strings.Contains(basePath, "http") {
 					basePath = strings.ReplaceAll(basePath, host, "")
 					basePath = strings.ReplaceAll(basePath, "http://", "")

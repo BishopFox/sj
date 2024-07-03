@@ -50,6 +50,7 @@ var (
 		"/docs/v2",
 		"/docs/v3",
 		"/public",
+		"/redoc",
 	}
 	jsonEndpoints = []string{
 		"",
@@ -108,7 +109,8 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 			if bodyBytes != nil {
 				checkSpec := UnmarshalSpec(bodyBytes)
 				if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
-					log.Infof("\nDefinition file found: %s\n", url)
+					fmt.Println("")
+					log.Infof("Definition file found: %s\n", url)
 					return true, checkSpec
 				}
 			}
@@ -127,7 +129,7 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 				}
 			}
 		}
-		if i+1 == len(urls) {
+		if i == len(urls) {
 			fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
 		} else {
 			fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
