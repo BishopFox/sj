@@ -153,7 +153,6 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
 	requestStatus = resp.StatusCode
-	fmt.Println(resp.Status)
 
 	return bodyBytes, bodyString, requestStatus
 }
@@ -174,7 +173,7 @@ func CheckContentType(client http.Client, url string) string {
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		log.Error("Error: response not received.\n", err)
 		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
-			fmt.Println("Try supplying the --insecure flag.")
+			log.Fatal("Try supplying the --insecure flag.")
 		}
 		return ""
 	}

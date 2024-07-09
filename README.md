@@ -1,5 +1,7 @@
 # sj (Swagger Jacker)
 
+![](img/sj-logo.png)
+
 sj is a command line tool designed to assist with auditing of exposed Swagger/OpenAPI definition files by checking the associated API endpoints for weak authentication. It also provides command templates for manual vulnerability testing.
 
 It does this by parsing the definition file for paths, parameters, and accepted methods before using the results with one of three commands:
@@ -131,4 +133,55 @@ INFO[0015] Definition file found: https://petstore.swagger.io/v2/swagger
 
 A full list of commands can be found by using the `--help` flag:
 
-![Help Command](img/sj-help.gif)
+```bash
+$ sj --help
+The process of reviewing and testing exposed API definition files is often tedious and requires a large investment of time for a thorough review.
+
+sj (swaggerjacker) is a CLI tool that can be used to perform an initial check of API endpoints identified through exposed Swagger/OpenAPI definition files. 
+Once you determine what endpoints require authentication and which do not, you can use the "prepare" command to generate command templates for further (manual) testing.
+
+Example usage:
+
+Perform a quick check of endpoints which require authentication:
+$ sj automate -u https://petstore.swagger.io/v2/swagger.json
+
+Generate a list of commands to use for manual testing:
+$ sj prepare -u https://petstore.swagger.io/v2/swagger.json
+
+Generate a list of raw API routes for use with custom scripts:
+$ sj endpoints -u https://petstore.swagger.io/v2/swagger.json
+
+Perform a brute-force attack against the target to identify hidden definition files:
+$ sj brute -u https://petstore.swagger.io
+
+Usage:
+  sj [flags]
+  sj [command]
+
+Available Commands:
+  automate    Sends a series of automated requests to the discovered endpoints.
+  brute       Sends a series of automated requests to discover hidden API operation definitions.
+  endpoints   Prints a list of endpoints from the target.
+  help        Help about any command
+  prepare     Prepares a set of commands for manual testing of each endpoint.
+
+Flags:
+  -a, --agent string            Set the User-Agent string. (default "Swagger Jacker (github.com/BishopFox/sj)")
+  -b, --base-path string        Set the API base path if not defined in the definition file (i.e. /V2/).
+  -f, --format string           Declare the format of the definition file (json/yaml/yml/js). (default "json")
+  -H, --headers stringArray     Add custom headers, separated by a colon ("Name: Value"). Multiple flags are accepted.
+  -h, --help                    help for sj
+  -i, --insecure                Ignores server certificate validation.
+  -l, --local-file string       Loads the documentation from a local file.
+  -o, --outfile string          Output the results to a file. Only supported for the 'automate' and 'brute' commands at this time.
+  -p, --proxy string            Proxy host and port. Example: http://127.0.0.1:8080 (default "NOPROXY")
+  -q, --quiet                   Do not prompt for user input - uses default values for all requests.
+  -r, --randomize-user-agent    Randomizes the user agent string. Default is 'false'.
+  -s, --safe-word stringArray   Avoids 'dangerous word' check for the specified word(s). Multiple flags are accepted.
+  -T, --target string           Manually set a target for the requests to be made if separate from the host the documentation resides on.
+  -t, --timeout int             Set the request timeout period. (default 30)
+  -u, --url string              Loads the documentation file from a URL
+  -v, --version                 version for sj
+
+Use "sj [command] --help" for more information about a command.
+```

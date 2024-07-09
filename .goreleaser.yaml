@@ -34,10 +34,10 @@ changelog:
       - "^test:"
   groups:
     - title: Features
-      regexp: "^.*feat[(\\w)]*:+.*$"
+      regexp: "^(?i).*add.*$"
       order: 0
     - title: "Bug fixes"
-      regexp: "^.*fix[(\\w)]*:+.*$"
+      regexp: "^(?i).*fix.*$"
       order: 1
     - title: Others
       order: 999

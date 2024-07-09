@@ -21,14 +21,15 @@ var (
 
 func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName string) {
 
-	if outputFormat == "json" {
+	if outputFormat == "json" && !quiet {
 		if len(doc3.Components.SecuritySchemes) != 0 {
 			log.Warnf("The following authentication mechanisms are supported. If necessary, supply these manually when using the JSON output format:\n")
 		}
 		for mechanism := range doc3.Components.SecuritySchemes {
 			log.Infof(`Type: %s, Scheme: %s`, doc3.Components.SecuritySchemes[mechanism].Value.Type, doc3.Components.SecuritySchemes[mechanism].Value.Scheme)
 		}
-	} else {
+		log.Warnln("Note: To avoid these messages, pass the quiet (-q) flag.")
+	} else if !quiet {
 		if len(doc3.Components.SecuritySchemes) > 0 {
 			log.Info("Available authentication mechanisms: ")
 		}
@@ -44,7 +45,7 @@ func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName s
 				fmt.Printf("    - %s\n", mechanism)
 			}
 
-			if doc3.Components.SecuritySchemes[mechanism].Value.Type == "http" && !quiet {
+			if doc3.Components.SecuritySchemes[mechanism].Value.Type == "http" {
 				if doc3.Components.SecuritySchemes[mechanism].Value.Scheme == "basic" {
 					log.Infof("Basic Authentication is accepted. Supply a username and password? (y/N)")
 					fmt.Scanln(&autoApplyBasicAuth)
@@ -64,7 +65,7 @@ func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName s
 				} else if strings.ToLower(doc3.Components.SecuritySchemes[mechanism].Value.Scheme) == "bearer" {
 					log.Warn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
 				}
-			} else if doc3.Components.SecuritySchemes[mechanism].Value.Type == "apiKey" && doc3.Components.SecuritySchemes[mechanism].Value.In == "query" && !quiet {
+			} else if doc3.Components.SecuritySchemes[mechanism].Value.Type == "apiKey" && doc3.Components.SecuritySchemes[mechanism].Value.In == "query" {
 				apiInQuery = true
 				log.Infof("An API key can be provided via a parameter string. Would you like to apply one? (y/N)")
 				fmt.Scanln(&autoApplyAPIKey)
@@ -75,7 +76,7 @@ func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName s
 					fmt.Scanln(&apiKey)
 					log.Infof("Using %s=%s as the API key in all requests.", apiKeyName, apiKey)
 				}
-			} else if doc3.Components.SecuritySchemes[mechanism].Value.Type == "apiKey" && doc3.Components.SecuritySchemes[mechanism].Value.In == "header" && !quiet {
+			} else if doc3.Components.SecuritySchemes[mechanism].Value.Type == "apiKey" && doc3.Components.SecuritySchemes[mechanism].Value.In == "header" {
 				log.Infof("An API key can be provided via the header %s. Would you like to apply one? (y/N)", doc3.Components.SecuritySchemes[mechanism].Value.Name)
 				fmt.Scanln(&autoApplyAPIKey)
 				autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
