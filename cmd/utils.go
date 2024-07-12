@@ -161,6 +161,12 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 			s.URL = *u
 			s = s.IterateOverPaths(client)
 		}
+	} else {
+		if apiTarget != "" {
+			u, _ = url.Parse(apiTarget)
+		}
+		s.URL = *u
+		s = s.IterateOverPaths(client)
 	}
 
 	if os.Args[1] == "automate" {
