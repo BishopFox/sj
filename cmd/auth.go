@@ -13,10 +13,12 @@ import (
 var (
 	autoApplyAPIKey    string = "n"
 	autoApplyBasicAuth string = "n"
+	autoApplyBearer    string = "n"
 	basicAuthUser      string
 	basicAuthPass      string
 	basicAuth          []byte
 	basicAuthString    string
+	bearerToken        string
 )
 
 func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName string) {
@@ -77,14 +79,27 @@ func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName s
 					log.Infof("Using %s=%s as the API key in all requests.", apiKeyName, apiKey)
 				}
 			} else if doc3.Components.SecuritySchemes[mechanism].Value.Type == "apiKey" && doc3.Components.SecuritySchemes[mechanism].Value.In == "header" {
-				log.Infof("An API key can be provided via the header %s. Would you like to apply one? (y/N)", doc3.Components.SecuritySchemes[mechanism].Value.Name)
-				fmt.Scanln(&autoApplyAPIKey)
-				autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
-				if autoApplyAPIKey == "y" {
-					apiKeyName = doc3.Components.SecuritySchemes[mechanism].Value.Name
-					fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
-					fmt.Scanln(&apiKey)
-					Headers = append(Headers, doc3.Components.SecuritySchemes[mechanism].Value.Name+": "+apiKey)
+				if mechanism == "bearer" {
+					log.Infof("A bearer token is accepted. Would you like to provide one? (y/N)")
+					fmt.Scanln(&autoApplyBearer)
+					autoApplyBearer = strings.ToLower(autoApplyBearer)
+					if autoApplyBearer == "y" {
+						fmt.Printf("What value would you like to use for the Bearer Token? ")
+						fmt.Scanln(&bearerToken)
+						Headers = append(Headers, "Authorization: Bearer "+bearerToken)
+					} else {
+						log.Warn("A bearer token is accepted. Review the spec and craft a header manually using the -H flag.")
+					}
+				} else {
+					log.Infof("An API key can be provided via the header %s. Would you like to apply one? (y/N)", doc3.Components.SecuritySchemes[mechanism].Value.Name)
+					fmt.Scanln(&autoApplyAPIKey)
+					autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
+					if autoApplyAPIKey == "y" {
+						apiKeyName = doc3.Components.SecuritySchemes[mechanism].Value.Name
+						fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
+						fmt.Scanln(&apiKey)
+						Headers = append(Headers, doc3.Components.SecuritySchemes[mechanism].Value.Name+": "+apiKey)
+					}
 				}
 			}
 		}
