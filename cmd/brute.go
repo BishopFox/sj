@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -154,11 +155,31 @@ var bruteCmd = &cobra.Command{
 			log.Warnf("Error parsing URL:%s\n", err)
 		}
 		target := u.Scheme + "://" + u.Host
+		if endpointWordlist == "" {
+			allURLs = append(allURLs, makeURLs(target, jsonEndpoints, "")...)
+			allURLs = append(allURLs, makeURLs(target, javascriptEndpoints, ".js")...)
+			allURLs = append(allURLs, makeURLs(target, jsonEndpoints, ".json")...)
+			allURLs = append(allURLs, makeURLs(target, jsonEndpoints, "/")...)
+		} else {
+			endpointWordlistFile, err := os.Open(endpointWordlist)
+			if err != nil {
+				log.Fatalf("failed to open file: %s", err)
+			}
+			defer endpointWordlistFile.Close()
+			// Create a scanner to read the file
+			scanner := bufio.NewScanner(endpointWordlistFile)
+			// Read the file line by line
+			for scanner.Scan() {
+				endpoint := scanner.Text()
+				fullURL := target + endpoint
+				allURLs = append(allURLs, fullURL)
+			}
 
-		allURLs = append(allURLs, makeURLs(target, jsonEndpoints, "")...)
-		allURLs = append(allURLs, makeURLs(target, javascriptEndpoints, ".js")...)
-		allURLs = append(allURLs, makeURLs(target, jsonEndpoints, ".json")...)
-		allURLs = append(allURLs, makeURLs(target, jsonEndpoints, "/")...)
+			// Check for errors during scanning
+			if err := scanner.Err(); err != nil {
+				log.Fatalf("failed to scan file: %s", err)
+			}
+		}
 		log.Infof("Sending %d requests. This could take a while...\n", len(allURLs))
 
 		specFound, definitionFile := findDefinitionFile(allURLs, client)
@@ -194,6 +215,10 @@ var bruteCmd = &cobra.Command{
 	},
 }
 
+var endpointWordlist string
+
 func init() {
 	// TODO: Add a flag here (boolean) that defaults to false that will cause the program to execute 'sj automate' on the discovered definition file automatically.
+	bruteCmd.PersistentFlags().StringVarP(&endpointWordlist, "wordlist", "w", "", "The wordlist containing the paths to brute force.")
+
 }
