@@ -22,6 +22,7 @@ var (
 		"",
 		"/swagger",
 		"/swagger/docs",
+		"/swagger/latest",
 		"/swagger/v1",
 		"/swagger/v2",
 		"/swagger/v3",
