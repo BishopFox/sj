@@ -152,6 +152,13 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
+
+	if (resp.StatusCode == 301 || resp.StatusCode == 302) && strings.Contains(bodyString, "<html>") {
+		redirect, _ := resp.Location()
+		bodyBytes, bodyString, requestStatus = MakeRequest(client, method, redirect.Scheme+"://"+redirect.Host+redirect.Path, timeout, reqData)
+		return bodyBytes, bodyString, requestStatus
+	}
+
 	requestStatus = resp.StatusCode
 
 	return bodyBytes, bodyString, requestStatus
