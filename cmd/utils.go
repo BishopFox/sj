@@ -379,17 +379,18 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 }
 
 func (s SwaggerRequest) GetBasePath() string {
-	if strings.Contains(s.Def.Servers[0].URL, ":") {
-		var schemeIndex int
-		if strings.Contains(s.Def.Servers[0].URL, "://") {
-			schemeIndex = strings.Index(s.Def.Servers[0].URL, "://") + 3
-		} else {
-			schemeIndex = 0
-		}
-		s.URL.Host = s.Def.Servers[0].URL[schemeIndex:]
-	}
 	if basePath == "" {
 		if s.Def.Servers != nil {
+			if strings.Contains(s.Def.Servers[0].URL, ":") {
+				var schemeIndex int
+				if strings.Contains(s.Def.Servers[0].URL, "://") {
+					schemeIndex = strings.Index(s.Def.Servers[0].URL, "://") + 3
+				} else {
+					schemeIndex = 0
+				}
+				s.URL.Host = s.Def.Servers[0].URL[schemeIndex:]
+			}
+
 			if s.Def.Servers[0].URL == "/" {
 				basePath = "/"
 			} else if strings.Contains(s.Def.Servers[0].URL, "http") && !strings.Contains(s.Def.Servers[0].URL, s.URL.Host) { // Check to see if the server object being used for the base path contains a different host than the target
