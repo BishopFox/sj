@@ -142,6 +142,8 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			log.Fatal("Try supplying the --insecure flag.")
+		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
+			log.Fatalf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
 		} else if strings.Contains(fmt.Sprint(err), "user canceled") {
 			return nil, "skipped", 1
 		} else {
@@ -164,11 +166,13 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	return bodyBytes, bodyString, requestStatus
 }
 
-func CheckContentType(client http.Client, url string) string {
+func CheckContentType(client http.Client, target string) string {
+	u, _ := url.Parse(target)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", target, nil)
 	if err != nil && err != context.Canceled && err != io.EOF {
 		log.Fatal("Error: could not create HTTP request - ", err)
 	}
@@ -178,9 +182,12 @@ func CheckContentType(client http.Client, url string) string {
 		log.Printf("Error: %s - skipping request.", err)
 		return ""
 	} else if err != nil && err != context.Canceled && err != io.EOF {
-		log.Error("Error: response not received.\n", err)
 		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			log.Fatal("Try supplying the --insecure flag.")
+		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
+			log.Fatalf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
+		} else {
+			log.Error("Error: response not received.\n", err)
 		}
 		return ""
 	}
