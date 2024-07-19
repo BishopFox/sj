@@ -379,9 +379,14 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 }
 
 func (s SwaggerRequest) GetBasePath() string {
-	if strings.Contains(s.URL.Host, ":") {
-		hostPortStart := strings.Index(s.URL.Host, ":")
-		s.URL.Host = s.URL.Host[0:hostPortStart]
+	if strings.Contains(s.Def.Servers[0].URL, ":") {
+		var schemeIndex int
+		if strings.Contains(s.Def.Servers[0].URL, "://") {
+			schemeIndex = strings.Index(s.Def.Servers[0].URL, "://") + 3
+		} else {
+			schemeIndex = 0
+		}
+		s.URL.Host = s.Def.Servers[0].URL[schemeIndex:]
 	}
 	if basePath == "" {
 		if s.Def.Servers != nil {
