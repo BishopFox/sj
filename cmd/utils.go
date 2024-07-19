@@ -134,11 +134,13 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
 	if len(s.Def.Servers) > 1 {
 		if !quiet && (os.Args[1] != "endpoints") {
-			log.Warn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
-			for i, server := range s.Def.Servers {
-				fmt.Printf("Server %d: %s\n", i+1, server.URL)
+			if apiTarget == "" {
+				log.Warn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
+				for i, server := range s.Def.Servers {
+					fmt.Printf("Server %d: %s\n", i+1, server.URL)
+				}
+				fmt.Println()
 			}
-			fmt.Println()
 		}
 		if len(s.Def.Servers) > 1 && apiTarget == "" {
 			for _, server := range s.Def.Servers {
