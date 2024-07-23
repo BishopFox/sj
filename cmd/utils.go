@@ -38,77 +38,6 @@ type SwaggerRequest struct {
 var accessibleEndpoints []string
 var specJSON string
 
-func CheckAndConfigureProxy() (client http.Client) {
-	var proxyUrl *url.URL
-
-	transport := &http.Transport{}
-
-	if insecure {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	if proxy != "NOPROXY" {
-		proxyUrl, _ = url.Parse(proxy)
-		transport.Proxy = http.ProxyURL(proxyUrl)
-	}
-
-	client = http.Client{
-		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	return client
-}
-
-func ExtractSpecFromJS(bodyBytes []byte) []byte {
-	var openApiIndex int
-	var specClose int
-	var bodyString, spec string
-
-	bodyString = string(bodyBytes)
-	spec = strings.ReplaceAll(bodyString, "\n", "")
-	spec = strings.ReplaceAll(spec, "\t", "")
-	spec = strings.ReplaceAll(spec, " ", "")
-
-	if strings.Contains(strings.ReplaceAll(bodyString, " ", ""), `"swagger":"2.0"`) {
-		openApiIndex = strings.Index(spec, `"swagger":`) - 1
-		specClose = strings.LastIndex(spec, "]}") + 2
-
-		var doc2 openapi2.T
-		bodyBytes = []byte(spec[openApiIndex:specClose])
-		_ = json.Unmarshal(bodyBytes, &doc2)
-		if !strings.Contains(doc2.Swagger, "2") {
-			specClose = strings.LastIndex(spec, "}") + 1
-			bodyBytes = []byte(spec[openApiIndex:specClose])
-			_ = json.Unmarshal(bodyBytes, &doc2)
-			if !strings.Contains(doc2.Swagger, "2") {
-				log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
-			}
-		}
-	} else if strings.Contains(strings.ReplaceAll(bodyString, " ", ""), `"openapi":"3`) {
-		openApiIndex = strings.Index(spec, `"openapi":`) - 1
-
-		specClose = strings.LastIndex(spec, "]}") + 2
-
-		var doc3 openapi3.T
-		bodyBytes = []byte(spec[openApiIndex:specClose])
-		_ = json.Unmarshal(bodyBytes, &doc3)
-		if !strings.Contains(doc3.OpenAPI, "3") {
-			specClose = strings.LastIndex(spec, "}") + 1
-			bodyBytes = []byte(spec[openApiIndex:specClose])
-			_ = json.Unmarshal(bodyBytes, &doc3)
-			if !strings.Contains(doc3.OpenAPI, "3") {
-				log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
-			}
-		}
-	} else {
-		log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
-	}
-
-	return bodyBytes
-}
-
 func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
 	var s SwaggerRequest
@@ -220,6 +149,7 @@ func (s SwaggerRequest) IterateOverPaths(client http.Client) SwaggerRequest {
 
 		for method, op := range operations {
 			// Do all the things here :D
+			s.BodyData = nil
 			if op != nil {
 				s.URL.Path = s.Path + path
 				s = s.BuildDefinedRequests(client, method, pathItem, op)
@@ -368,8 +298,73 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 	}
 
 	if op.RequestBody != nil {
-		s.Body["test"] = "test"
-		s.BodyData, _ = json.Marshal(s.Body)
+		if op.RequestBody.Value.Content != nil {
+			for i := range op.RequestBody.Value.Content {
+				if contentType == "" && Headers != nil && strings.Contains(strings.ToLower(strings.Join(Headers, ",")), "content-type") {
+					headerString := strings.Join(Headers, ",")
+					Headers = nil
+					ctIndex := strings.Index(strings.ToLower(headerString), "content-type:") + 14
+					headerString = headerString[ctIndex:]
+					if strings.Contains(headerString, ",") {
+						headerString = strings.TrimPrefix(headerString, ",")
+						ctEndIndex := strings.Index(headerString[ctIndex:], ",") + 1
+						headerString = headerString[:ctEndIndex]
+					} else if !strings.Contains(strings.ToLower(headerString), "content-type") && (strings.Contains(strings.ToLower(headerString), "multipart/form-data") || strings.Contains(strings.ToLower(headerString), "application/json")) {
+						headerString = ""
+					}
+					if headerString != "" {
+						Headers = append(Headers, strings.Split(headerString, ",")...)
+					}
+
+				}
+				if i == "multipart/form-data" && op.RequestBody.Value.Content.Get(i).Schema.Value != nil {
+					if contentType == "" && !strings.Contains(strings.ToLower(strings.Join(Headers, "")), "content-type") {
+						Headers = append(Headers, "Content-Type: multipart/form-data")
+					}
+					var formData []string
+					for j := range op.RequestBody.Value.Content.Get(i).Schema.Value.Properties {
+						if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
+							var valueType string = op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value.Type
+							if valueType == "string" {
+								s.Body[j] = "test"
+							} else if valueType == "boolean" {
+								s.Body[j] = false
+							} else if valueType == "integer" || valueType == "number" {
+								s.Body[j] = 1
+							} else {
+								s.Body[j] = "unknown_type_populate_manually"
+							}
+							formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
+						}
+					}
+					s.BodyData = []byte(strings.Join(formData, "&"))
+				}
+
+				if i == "application/json" && op.RequestBody.Value.Content.Get(i).Schema.Value != nil {
+					if contentType == "" && !strings.Contains(strings.ToLower(strings.Join(Headers, "")), "content-type") {
+						Headers = append(Headers, "Content-Type: application/json")
+					}
+					for j := range op.RequestBody.Value.Content.Get(i).Schema.Value.Properties {
+						if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
+							var valueType string = op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value.Type
+							if valueType == "string" {
+								s.Body[j] = "test"
+							} else if valueType == "boolean" {
+								s.Body[j] = false
+							} else if valueType == "integer" || valueType == "number" {
+								s.Body[j] = 1
+							} else {
+								s.Body[j] = "unknown_type_populate_manually"
+							}
+						}
+					}
+					s.BodyData, _ = json.Marshal(s.Body)
+				} else {
+					// TODO: handle op.RequestBody.Value.Content.Get(i).Schema.Ref
+					s.BodyData = nil
+				}
+			}
+		}
 	}
 
 	if s.ApiInQuery && s.ApiKey != "" {
@@ -542,4 +537,75 @@ func WriteJSONFile(result string, end bool) {
 		w.Flush()
 	}
 
+}
+
+func ExtractSpecFromJS(bodyBytes []byte) []byte {
+	var openApiIndex int
+	var specClose int
+	var bodyString, spec string
+
+	bodyString = string(bodyBytes)
+	spec = strings.ReplaceAll(bodyString, "\n", "")
+	spec = strings.ReplaceAll(spec, "\t", "")
+	spec = strings.ReplaceAll(spec, " ", "")
+
+	if strings.Contains(strings.ReplaceAll(bodyString, " ", ""), `"swagger":"2.0"`) {
+		openApiIndex = strings.Index(spec, `"swagger":`) - 1
+		specClose = strings.LastIndex(spec, "]}") + 2
+
+		var doc2 openapi2.T
+		bodyBytes = []byte(spec[openApiIndex:specClose])
+		_ = json.Unmarshal(bodyBytes, &doc2)
+		if !strings.Contains(doc2.Swagger, "2") {
+			specClose = strings.LastIndex(spec, "}") + 1
+			bodyBytes = []byte(spec[openApiIndex:specClose])
+			_ = json.Unmarshal(bodyBytes, &doc2)
+			if !strings.Contains(doc2.Swagger, "2") {
+				log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
+			}
+		}
+	} else if strings.Contains(strings.ReplaceAll(bodyString, " ", ""), `"openapi":"3`) {
+		openApiIndex = strings.Index(spec, `"openapi":`) - 1
+
+		specClose = strings.LastIndex(spec, "]}") + 2
+
+		var doc3 openapi3.T
+		bodyBytes = []byte(spec[openApiIndex:specClose])
+		_ = json.Unmarshal(bodyBytes, &doc3)
+		if !strings.Contains(doc3.OpenAPI, "3") {
+			specClose = strings.LastIndex(spec, "}") + 1
+			bodyBytes = []byte(spec[openApiIndex:specClose])
+			_ = json.Unmarshal(bodyBytes, &doc3)
+			if !strings.Contains(doc3.OpenAPI, "3") {
+				log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
+			}
+		}
+	} else {
+		log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
+	}
+
+	return bodyBytes
+}
+
+func CheckAndConfigureProxy() (client http.Client) {
+	var proxyUrl *url.URL
+
+	transport := &http.Transport{}
+
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	if proxy != "NOPROXY" {
+		proxyUrl, _ = url.Parse(proxy)
+		transport.Proxy = http.ProxyURL(proxyUrl)
+	}
+
+	client = http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	return client
 }
