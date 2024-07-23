@@ -477,14 +477,9 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 		_ = yaml.Unmarshal(bodyBytes, &doc)
 		_ = yaml.Unmarshal(bodyBytes, &doc3)
 	}
-	err := json.Unmarshal(bodyBytes, &doc)
-	if err != nil {
-		err = json.Unmarshal(bodyBytes, &doc3)
-		if err != nil {
-			log.Fatalf("Error unmarshalling API definitions: %s\n", err)
-		}
-	}
-	err = json.Unmarshal(bodyBytes, &doc3)
+
+	_ = json.Unmarshal(bodyBytes, &doc)
+	_ = json.Unmarshal(bodyBytes, &doc3)
 
 	if strings.HasPrefix(doc3.OpenAPI, "3") {
 		newDoc := &doc3
@@ -499,7 +494,7 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 		var noDoc openapi3.T
 		return &noDoc
 	} else {
-		log.Fatalf("Error parsing definition file: %s\n", doc3.OpenAPI)
+		log.Fatal("Error parsing definition file.")
 		return nil
 	}
 }
