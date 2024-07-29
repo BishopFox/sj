@@ -4,7 +4,7 @@
 
 sj is a command line tool designed to assist with auditing of exposed Swagger/OpenAPI definition files by checking the associated API endpoints for weak authentication. It also provides command templates for manual vulnerability testing.
 
-It does this by parsing the definition file for paths, parameters, and accepted methods before using the results with one of three commands:
+It does this by parsing the definition file for paths, parameters, and accepted methods before using the results with one of four commands:
 - `automate` - Crafts a series of requests and analyzes the status code of the response.
 - `prepare` - Generates a list of commands to use for manual testing.
 - `endpoints` - Generates a list of raw API routes. *Path values will not be replaced with test data*.
