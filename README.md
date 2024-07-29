@@ -26,6 +26,9 @@ To install the latest version of the tool, run:
 
 ```bash
 $ go install github.com/BishopFox/sj@latest
+
+# Note: you may also need to place the path to your Go binaries within your PATH environment variable:
+$ export PATH=$PATH:~/go/bin
 ```
 
 ## Usage
