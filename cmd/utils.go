@@ -46,7 +46,6 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 	s.ApiInQuery, s.ApiKey, s.ApiKeyName = CheckSecDefs(*s.Def)
 	u, _ := url.Parse(swaggerURL)
 	s.URL = *u
-	// BuildObjectsFromSchemaDefinitions(*newDoc) TODO
 
 	if os.Args[1] != "endpoints" {
 		// Prints Title/Description values if they exist
@@ -274,30 +273,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 			continue
 		} else if param.Value.In == "path" {
 			if param.Value.Schema.Ref != "" {
-				name := strings.TrimPrefix(param.Value.Schema.Ref, "#/components/schemas/")
-				if s.Def.Components.Schemas[name] != nil {
-					schema := s.Def.Components.Schemas[name]
-					if schema.Value.Properties != nil {
-						for property := range schema.Value.Properties {
-							if schema.Value.Properties[property].Value.Type == "string" {
-								if strings.Contains(s.URL.Path, param.Value.Name) {
-									s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
-								} else {
-									s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "test")
-								}
-							} else {
-								if strings.Contains(s.URL.Path, param.Value.Name) {
-									s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "1")
-								} else {
-									s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "1")
-								}
-							}
-						}
-					} else if schema.Value.Enum != nil {
-						value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-						s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", fmt.Sprint(value))
-					}
-				}
+				s.SetParametersFromSchema(param, "path", param.Value.Schema.Ref, nil)
 			} else if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
 				if strings.Contains(s.URL.Path, param.Value.Name) {
 					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
@@ -313,24 +289,9 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 			}
 		} else if param.Value.In == "query" {
 			if param.Value.Schema.Ref != "" {
-				name := strings.TrimPrefix(param.Value.Schema.Ref, "#/components/schemas/")
-				if s.Def.Components.Schemas[name] != nil {
-					schema := s.Def.Components.Schemas[name]
-					if schema.Value.Properties != nil {
-						for property := range schema.Value.Properties {
-							if schema.Value.Properties[property].Value.Type == "string" {
-								s.Query.Add(param.Value.Name, "test")
-							} else {
-								s.Query.Add(param.Value.Name, "1")
-							}
-						}
-					} else if schema.Value.Enum != nil {
-						value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-						s.Query.Add(param.Value.Name, fmt.Sprint(value))
-					}
-				}
+				s.SetParametersFromSchema(param, "query", param.Value.Schema.Ref, nil)
 			} else {
-				if param.Value.Schema.Value.Type == "string" {
+				if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
 					s.Query.Add(param.Value.Name, "test")
 				} else {
 					s.Query.Add(param.Value.Name, "1")
@@ -340,22 +301,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 			Headers = append(Headers, fmt.Sprintf("%s: %s", param.Value.Name, "1"))
 		} else if param.Value.In == "body" {
 			if param.Value.Schema.Ref != "" {
-				name := strings.TrimPrefix(param.Value.Schema.Ref, "#/components/schemas/")
-				if s.Def.Components.Schemas[name] != nil {
-					schema := s.Def.Components.Schemas[name]
-					if schema.Value.Properties != nil {
-						for property := range schema.Value.Properties {
-							if schema.Value.Properties[property].Value.Type == "string" {
-								s.Body[param.Value.Name] = "test"
-							} else {
-								s.Body[param.Value.Name] = 1
-							}
-						}
-					} else if schema.Value.Enum != nil {
-						value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-						s.Body[param.Value.Name] = value
-					}
-				}
+				s.SetParametersFromSchema(param, "body", param.Value.Schema.Ref, nil)
 			}
 			if param.Value.Schema.Value.Type == "string" {
 				s.Body[param.Value.Name] = "test"
@@ -393,52 +339,10 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 
 				}
 				if op.RequestBody.Value.Content.Get(i).Schema.Value == nil {
-					name := strings.TrimPrefix(op.RequestBody.Value.Content.Get(i).Schema.Ref, "#/components/schemas/")
-					if s.Def.Components.Schemas[name] != nil {
-						schema := s.Def.Components.Schemas[name]
-						if schema.Value.Properties != nil {
-							for property := range schema.Value.Properties {
-								if schema.Value.Properties[property].Ref != "" {
-									n2 := strings.TrimPrefix(schema.Value.Properties[property].Ref, "#/components/schemas/")
-									if s.Def.Components.Schemas[n2] != nil {
-										s2 := s.Def.Components.Schemas[n2]
-										if s2.Value.Properties != nil {
-											for p := range s2.Value.Properties {
-												if s2.Value.Properties[p].Ref != "" {
-													/*
-														This needs to be handled properly :/
-														Will fix in a future update
-														fmt.Println(s.URL.Path)                 //DEBUG
-														fmt.Println(name)                       //DEBUG
-														fmt.Println(property)                   //DEBUG
-														fmt.Println(s2.Value.Title)             //DEBUG
-														fmt.Println(p)                          //DEBUG
-														fmt.Println(s2.Value.Properties[p].Ref) //DEBUG
-													*/
-													continue
-												} else if s2.Value.Properties[p].Value.Type == "string" {
-													s.Body[p] = "test"
-												} else {
-													s.Body[p] = 1
-												}
-											}
-										}
-									}
-								} else if schema.Value.Properties[property].Value.Type == "string" {
-									s.Body[property] = "test"
-								} else {
-									s.Body[property] = 1
-								}
-							}
-						} else if schema.Value.Enum != nil {
-							value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-							s.Body[schema.Value.Title] = value
-						}
-						if strings.Contains(i, "json") {
-							s.BodyData, _ = json.Marshal(s.Body)
-						}
+					s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Ref, op.RequestBody)
+					if strings.Contains(i, "json") {
+						s.BodyData, _ = json.Marshal(s.Body)
 					}
-					continue
 				} else if i == "application/x-www-form-urlencoded" {
 					if contentType == "" && !strings.Contains(strings.ToLower(strings.Join(Headers, "")), "content-type") {
 						Headers = append(Headers, "Content-Type: application/x-www-form-urlencoded")
@@ -500,6 +404,78 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 		s.Query.Add(s.ApiKeyName, s.ApiKey)
 	}
 	return s
+}
+
+func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, location, schemaRef string, req *openapi3.RequestBodyRef) {
+	if param != nil {
+		name := strings.TrimPrefix(schemaRef, "#/components/schemas/")
+		if s.Def.Components.Schemas[name] != nil {
+			schema := s.Def.Components.Schemas[name]
+			if schema.Value.Properties != nil {
+				for property := range schema.Value.Properties {
+					if schema.Value.Properties[property].Value.Type == "string" {
+						if location == "path" {
+							if strings.Contains(s.URL.Path, param.Value.Name) {
+								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
+							} else {
+								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "test")
+							}
+						} else {
+							if strings.Contains(s.URL.Path, param.Value.Name) {
+								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "1")
+							} else {
+								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "1")
+							}
+						}
+					} else if location == "query" {
+						if schema.Value.Properties[property].Value.Type == "string" {
+							s.Query.Add(param.Value.Name, "test")
+						} else {
+							s.Query.Add(param.Value.Name, "1")
+						}
+					} else if location == "body" {
+						if schema.Value.Properties[property].Value.Type == "string" {
+							s.Body[param.Value.Name] = "test"
+						} else {
+							s.Body[param.Value.Name] = 1
+						}
+					}
+				}
+			} else if schema.Value.Enum != nil {
+				if location == "path" {
+					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
+					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", fmt.Sprint(value))
+				} else if location == "query" {
+					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
+					s.Query.Add(param.Value.Name, fmt.Sprint(value))
+				} else if location == "body" {
+					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
+					s.Body[param.Value.Name] = value
+				}
+			}
+		}
+	} else {
+		name := strings.TrimPrefix(schemaRef, "#/components/schemas/")
+		if s.Def.Components.Schemas[name] != nil {
+			schema := s.Def.Components.Schemas[name]
+			if schema.Value.Properties != nil {
+				for property := range schema.Value.Properties {
+					if schema.Value.Properties[property].Ref != "" {
+						s.SetParametersFromSchema(nil, "body", schema.Value.Properties[property].Ref, req)
+					} else {
+						if schema.Value.Properties[property].Value.Type == "string" {
+							s.Body[property] = "test"
+						} else {
+							s.Body[property] = 1
+						}
+					}
+				}
+			} else if schema.Value.Enum != nil {
+				value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
+				s.Body[schema.Value.Title] = value
+			}
+		}
+	}
 }
 
 func (s SwaggerRequest) GetBasePath() string {
