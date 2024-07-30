@@ -70,7 +70,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 				fmt.Println()
 			}
 		}
-		if len(s.Def.Servers) > 1 && apiTarget == "" {
+		if apiTarget == "" {
 			for _, server := range s.Def.Servers {
 				if outputFormat == "console" && os.Args[1] == "automate" {
 					log.Warnf("Results for %s:\n", server.URL)
@@ -79,6 +79,11 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 				if server.URL == "/" {
 					s.Path = ""
 				}
+
+				if strings.Contains(server.URL, "localhost") || strings.Contains(server.URL, "127.0.0.1") || strings.Contains(server.URL, "::1") {
+					log.Warn("The server(s) documented in the definition file contain(s) a local host value and may result in errors. Supply a target manually using the '-T' flag.")
+				}
+
 				u, _ := url.Parse(server.URL)
 				s.URL = *u
 				s = s.IterateOverPaths(client)
@@ -94,6 +99,13 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 	} else {
 		if apiTarget != "" {
 			u, _ = url.Parse(apiTarget)
+		} else {
+			if swaggerURL == "" {
+				u, _ = url.Parse(s.Def.Servers[0].URL)
+				if strings.Contains(s.Def.Servers[0].URL, "localhost") || strings.Contains(s.Def.Servers[0].URL, "127.0.0.1") || strings.Contains(s.Def.Servers[0].URL, "::1") {
+					log.Warn("The server documented in the definition file contains a local host value and may result in errors. Supply a target manually using the '-T' flag.")
+				}
+			}
 		}
 		s.URL = *u
 		s = s.IterateOverPaths(client)
