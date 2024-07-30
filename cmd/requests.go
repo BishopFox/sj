@@ -140,7 +140,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		log.Printf("Error: %s - skipping request.", err)
 		return nil, "", 0
 	} else if err != nil && err != context.Canceled && err != io.EOF {
-		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
+		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			log.Fatal("Try supplying the --insecure flag.")
 		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
 			log.Fatalf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
@@ -182,7 +182,7 @@ func CheckContentType(client http.Client, target string) string {
 		log.Printf("Error: %s - skipping request.", err)
 		return ""
 	} else if err != nil && err != context.Canceled && err != io.EOF {
-		if strings.Contains(fmt.Sprint(err), "tls") && !strings.Contains(fmt.Sprint(err), "user canceled") {
+		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			log.Fatal("Try supplying the --insecure flag.")
 		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
 			log.Fatalf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
