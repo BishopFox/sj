@@ -425,7 +425,10 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 			schema := s.Def.Components.Schemas[name]
 			if schema.Value.Properties != nil {
 				for property := range schema.Value.Properties {
-					if schema.Value.Properties[property].Value.Type == "string" {
+					if schema.Value.Properties[property].Ref != "" {
+						log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+						break
+					} else if schema.Value.Properties[property].Value.Type == "string" {
 						if location == "path" {
 							if strings.Contains(s.URL.Path, param.Value.Name) {
 								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
@@ -473,7 +476,8 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 			if schema.Value.Properties != nil {
 				for property := range schema.Value.Properties {
 					if schema.Value.Properties[property].Ref != "" {
-						s.SetParametersFromSchema(nil, "body", schema.Value.Properties[property].Ref, req)
+						log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+						break
 					} else {
 						if schema.Value.Properties[property].Value.Type == "string" {
 							s.Body[property] = "test"
