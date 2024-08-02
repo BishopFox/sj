@@ -284,31 +284,44 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 		if param.Value == nil && param.Value.Schema.Ref == "" {
 			continue
 		} else if param.Value.In == "path" {
-			if param.Value.Schema.Ref != "" {
-				s.SetParametersFromSchema(param, "path", param.Value.Schema.Ref, nil)
-			} else if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
+			if param.Value.Schema != nil {
+				if param.Value.Schema.Ref != "" {
+					s.SetParametersFromSchema(param, "path", param.Value.Schema.Ref, nil)
+				} else if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
+					if strings.Contains(s.URL.Path, param.Value.Name) {
+						s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
+					} else {
+						s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "test")
+					}
+				} else {
+					if strings.Contains(s.URL.Path, param.Value.Name) {
+						s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "1")
+					} else {
+						s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "1")
+					}
+				}
+			} else {
 				if strings.Contains(s.URL.Path, param.Value.Name) {
 					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
 				} else {
 					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "test")
 				}
-			} else {
-				if strings.Contains(s.URL.Path, param.Value.Name) {
-					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "1")
-				} else {
-					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "1")
-				}
 			}
 		} else if param.Value.In == "query" {
-			if param.Value.Schema.Ref != "" {
-				s.SetParametersFromSchema(param, "query", param.Value.Schema.Ref, nil)
-			} else {
-				if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
-					s.Query.Add(param.Value.Name, "test")
+			if param.Value.Schema != nil {
+				if param.Value.Schema.Ref != "" {
+					s.SetParametersFromSchema(param, "query", param.Value.Schema.Ref, nil)
 				} else {
-					s.Query.Add(param.Value.Name, "1")
+					if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
+						s.Query.Add(param.Value.Name, "test")
+					} else {
+						s.Query.Add(param.Value.Name, "1")
+					}
 				}
+			} else {
+				s.Query.Add(param.Value.Name, "test")
 			}
+
 		} else if param.Value.In == "header" && param.Value.Required {
 			Headers = append(Headers, fmt.Sprintf("%s: %s", param.Value.Name, "1"))
 		} else if param.Value.In == "body" {
@@ -404,7 +417,6 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 					s.Body["XML"] = "TEST_MANUALLY"
 					s.BodyData = []byte("XML=TEST_MANUALLY")
 				} else {
-					fmt.Println(i)
 					s.Body["test"] = "test"
 					s.BodyData = []byte("test=test")
 				}
