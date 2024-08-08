@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -232,40 +231,7 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 			}
 		}
 	} else if os.Args[1] == "prepare" {
-		if strings.ToLower(prepareFor) == "curl" {
-			if s.BodyData == nil {
-				if len(Headers) == 0 {
-					fmt.Printf("curl -sk -X %s '%s'\n", method, s.URL.String())
-				} else {
-					fmt.Printf("curl -sk -X %s '%s' -H '%s'\n", method, s.URL.String(), strings.Join(Headers, "' -H '"))
-				}
-			} else {
-				if len(Headers) == 0 {
-					fmt.Printf("curl -sk -X %s '%s' -d '%s'\n", method, s.URL.String(), s.BodyData)
-				} else {
-					fmt.Printf("curl -sk -X %s '%s' -d '%s' -H '%s'\n", method, s.URL.String(), s.BodyData, strings.Join(Headers, "' -H '"))
-				}
-			}
-		} else if strings.ToLower(prepareFor) == "sqlmap" {
-			if s.BodyData == nil {
-				if len(Headers) == 0 {
-					fmt.Printf("sqlmap -u %s\n", s.URL.String())
-				} else {
-					fmt.Printf("sqlmap -u %s -H '%s'\n", s.URL.String(), strings.Join(Headers, "' -H '"))
-				}
-			} else {
-				if len(Headers) == 0 {
-					fmt.Printf("sqlmap -u %s --data='%s'\n", s.URL.String(), s.BodyData)
-				} else {
-					fmt.Printf("sqlmap -u %s --data='%s' -H '%s'\n", s.URL.String(), s.BodyData, strings.Join(Headers, "' -H '"))
-				}
-			}
-		} else if strings.ToLower(prepareFor) == "ffuf" {
-			// TODO
-		} else {
-			log.Fatal("External tool not supported. Only 'curl' and 'sqlmap' are supported options for the '-e' flag at this time.")
-		}
-
+		s.PrintPreparedCommands(method)
 	} else if os.Args[1] == "endpoints" {
 
 		for k := range s.Def.Paths {
@@ -286,7 +252,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 		} else if param.Value.In == "path" {
 			if param.Value.Schema != nil {
 				if param.Value.Schema.Ref != "" {
-					s.SetParametersFromSchema(param, "path", param.Value.Schema.Ref, nil)
+					s = s.SetParametersFromSchema(param, "path", param.Value.Schema.Ref, nil, 0)
 				} else if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
 					if strings.Contains(s.URL.Path, param.Value.Name) {
 						s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
@@ -310,7 +276,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 		} else if param.Value.In == "query" {
 			if param.Value.Schema != nil {
 				if param.Value.Schema.Ref != "" {
-					s.SetParametersFromSchema(param, "query", param.Value.Schema.Ref, nil)
+					s = s.SetParametersFromSchema(param, "query", param.Value.Schema.Ref, nil, 0)
 				} else {
 					if param.Value.Schema.Value.Type != "" && param.Value.Schema.Value.Type == "string" {
 						s.Query.Add(param.Value.Name, "test")
@@ -326,7 +292,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 			Headers = append(Headers, fmt.Sprintf("%s: %s", param.Value.Name, "1"))
 		} else if param.Value.In == "body" {
 			if param.Value.Schema.Ref != "" {
-				s.SetParametersFromSchema(param, "body", param.Value.Schema.Ref, nil)
+				s = s.SetParametersFromSchema(param, "body", param.Value.Schema.Ref, nil, 0)
 			}
 			if param.Value.Schema.Value.Type == "string" {
 				s.Body[param.Value.Name] = "test"
@@ -346,79 +312,65 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 	if op.RequestBody != nil {
 		if op.RequestBody.Value.Content != nil {
 			for i := range op.RequestBody.Value.Content {
-				if contentType == "" && Headers != nil && strings.Contains(strings.ToLower(strings.Join(Headers, ",")), "content-type") {
-					headerString := strings.Join(Headers, ",")
-					Headers = nil
-					ctIndex := strings.Index(strings.ToLower(headerString), "content-type:") + 14
-					headerString = headerString[ctIndex:]
-					if strings.Contains(headerString, ",") {
-						headerString = strings.TrimPrefix(headerString, ",")
-						ctEndIndex := strings.Index(headerString[ctIndex:], ",") + 1
-						headerString = headerString[:ctEndIndex]
-					} else if !strings.Contains(strings.ToLower(headerString), "content-type") && (strings.Contains(strings.ToLower(headerString), "application/x-www-form-urlencoded") || strings.Contains(strings.ToLower(headerString), "application/json")) {
-						headerString = ""
-					}
-					if headerString != "" {
-						Headers = append(Headers, strings.Split(headerString, ",")...)
-					}
-
+				if contentType == "" {
+					EnforceSingleContentType(i)
+				} else {
+					EnforceSingleContentType(contentType)
 				}
 				if op.RequestBody.Value.Content.Get(i).Schema.Value == nil {
-					s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Ref, op.RequestBody)
+					s = s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Ref, op.RequestBody, 0)
 					if strings.Contains(i, "json") {
 						s.BodyData, _ = json.Marshal(s.Body)
-					}
-				} else if i == "application/x-www-form-urlencoded" {
-					if contentType == "" && !strings.Contains(strings.ToLower(strings.Join(Headers, "")), "content-type") {
-						Headers = append(Headers, "Content-Type: application/x-www-form-urlencoded")
-					}
-					var formData []string
-					for j := range op.RequestBody.Value.Content.Get(i).Schema.Value.Properties {
-						if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
-							var valueType string = op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value.Type
-							if valueType == "string" {
-								s.Body[j] = "test"
-							} else if valueType == "boolean" {
-								s.Body[j] = false
-							} else if valueType == "integer" || valueType == "number" {
-								s.Body[j] = 1
-							} else {
-								s.Body[j] = "unknown_type_populate_manually"
-							}
+					} else if strings.Contains(i, "x-www-form-urlencoded") {
+						var formData []string
+						for j := range s.Body {
 							formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
 						}
+						s.BodyData = []byte(strings.Join(formData, "&"))
+					} else if strings.Contains(i, "xml") {
+						// TODO
+					} else {
+						// TODO
 					}
-					s.BodyData = []byte(strings.Join(formData, "&"))
-				} else if strings.Contains(i, "json") {
-					if contentType == "" && !strings.Contains(strings.ToLower(strings.Join(Headers, "")), "content-type") {
-						Headers = append(Headers, "Content-Type: application/json")
-					}
+				} else {
+					var formData []string
+
 					for j := range op.RequestBody.Value.Content.Get(i).Schema.Value.Properties {
-						if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
+						if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Ref != "" {
+							s = s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Ref, op.RequestBody, 0)
+						} else {
 							var valueType string = op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value.Type
-							if valueType == "string" {
-								s.Body[j] = "test"
-							} else if valueType == "boolean" {
-								s.Body[j] = false
-							} else if valueType == "integer" || valueType == "number" {
-								s.Body[j] = 1
+							if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
+								if valueType == "string" {
+									s.Body[j] = "test"
+								} else if valueType == "boolean" {
+									s.Body[j] = false
+								} else if valueType == "integer" || valueType == "number" {
+									s.Body[j] = 1
+								} else {
+									s.Body[j] = "unknown_type_populate_manually"
+								}
+								if i == "application/x-www-form-urlencoded" {
+									formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
+								}
+							}
+
+							if i == "application/x-www-form-urlencoded" {
+								s.BodyData = []byte(strings.Join(formData, "&"))
+							} else if strings.Contains(i, "json") || i == "*/*" {
+								s.BodyData, _ = json.Marshal(s.Body)
+							} else if strings.Contains(i, "xml") {
+								for element := range s.Body {
+									fmt.Printf("<%s>test</%s>\n", element, element)
+								}
+
+								//s.BodyData, _ = xml.Marshal(s.Body)
 							} else {
-								s.Body[j] = "unknown_type_populate_manually"
+								s.Body["test"] = "test"
+								s.BodyData = []byte("test=test")
 							}
 						}
 					}
-					s.BodyData, _ = json.Marshal(s.Body)
-				} else if strings.Contains(i, "multipart/form-data") {
-					//TODO
-					s.Body["MULTIPART_FORM_DATA"] = "TEST_MANUALLY"
-					s.BodyData = []byte("MULTIPART_FORM_DATA=TEST_MANUALLY")
-				} else if strings.Contains(i, "xml") {
-					//TODO
-					s.Body["XML"] = "TEST_MANUALLY"
-					s.BodyData = []byte("XML=TEST_MANUALLY")
-				} else {
-					s.Body["test"] = "test"
-					s.BodyData = []byte("test=test")
 				}
 			}
 		}
@@ -430,80 +382,31 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 	return s
 }
 
-func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, location, schemaRef string, req *openapi3.RequestBodyRef) {
-	if param != nil {
-		name := strings.TrimPrefix(schemaRef, "#/components/schemas/")
-		if s.Def.Components.Schemas[name] != nil {
-			schema := s.Def.Components.Schemas[name]
-			if schema.Value.Properties != nil {
-				for property := range schema.Value.Properties {
-					if schema.Value.Properties[property].Ref != "" {
-						log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
-						break
-					} else if schema.Value.Properties[property].Value.Type == "string" {
-						if location == "path" {
-							if strings.Contains(s.URL.Path, param.Value.Name) {
-								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
-							} else {
-								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "test")
-							}
-						} else {
-							if strings.Contains(s.URL.Path, param.Value.Name) {
-								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "1")
-							} else {
-								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+strings.ToLower(param.Value.Name)+"}", "1")
-							}
-						}
-					} else if location == "query" {
-						if schema.Value.Properties[property].Value.Type == "string" {
-							s.Query.Add(param.Value.Name, "test")
-						} else {
-							s.Query.Add(param.Value.Name, "1")
-						}
-					} else if location == "body" {
-						if schema.Value.Properties[property].Value.Type == "string" {
-							s.Body[param.Value.Name] = "test"
-						} else {
-							s.Body[param.Value.Name] = 1
-						}
-					}
-				}
-			} else if schema.Value.Enum != nil {
-				if location == "path" {
-					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-					s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", fmt.Sprint(value))
-				} else if location == "query" {
-					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-					s.Query.Add(param.Value.Name, fmt.Sprint(value))
-				} else if location == "body" {
-					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-					s.Body[param.Value.Name] = value
-				}
-			}
-		}
+func (s SwaggerRequest) PrintPreparedCommands(method string) {
+	var preparedCommand string
+	if strings.ToLower(prepareFor) == "curl" {
+		preparedCommand = fmt.Sprintf("curl -sk -X %s '%s'", method, s.URL.String())
+	} else if strings.ToLower(prepareFor) == "sqlmap" {
+		preparedCommand = fmt.Sprintf("sqlmap --method=%s -u %s", method, s.URL.String())
+	} else if strings.ToLower(prepareFor) == "ffuf" {
+		log.Fatal("ffuf is not supported yet :(")
+		// TODO
 	} else {
-		name := strings.TrimPrefix(schemaRef, "#/components/schemas/")
-		if s.Def.Components.Schemas[name] != nil {
-			schema := s.Def.Components.Schemas[name]
-			if schema.Value.Properties != nil {
-				for property := range schema.Value.Properties {
-					if schema.Value.Properties[property].Ref != "" {
-						log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
-						break
-					} else {
-						if schema.Value.Properties[property].Value.Type == "string" {
-							s.Body[property] = "test"
-						} else {
-							s.Body[property] = 1
-						}
-					}
-				}
-			} else if schema.Value.Enum != nil {
-				value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
-				s.Body[schema.Value.Title] = value
-			}
+		log.Fatal("External tool not supported. Only 'curl' and 'sqlmap' are supported options for the '-e' flag at this time.")
+	}
+
+	if s.BodyData != nil {
+		if strings.ToLower(prepareFor) == "sqlmap" {
+			preparedCommand = preparedCommand + fmt.Sprintf(" --data='%s'", s.BodyData)
+		} else {
+			preparedCommand = preparedCommand + fmt.Sprintf(" -d '%s'", s.BodyData)
 		}
 	}
+	if len(Headers) != 0 {
+		preparedCommand = preparedCommand + fmt.Sprintf(" -H '%s'", strings.Join(Headers, "' -H '"))
+	}
+
+	fmt.Println(preparedCommand)
 }
 
 func (s SwaggerRequest) GetBasePath() string {
@@ -741,4 +644,25 @@ func CheckAndConfigureProxy() (client http.Client) {
 		},
 	}
 	return client
+}
+
+func EnforceSingleContentType(newContentType string) {
+	if Headers != nil {
+		headerString := strings.Join(Headers, ",")
+		Headers = nil
+		ctIndex := strings.Index(strings.ToLower(headerString), "content-type:") + 14
+		headerString = headerString[ctIndex:]
+		if strings.Contains(headerString, ",") {
+			headerString = strings.TrimPrefix(headerString, ",")
+			ctEndIndex := strings.Index(headerString[ctIndex:], ",") + 1
+			headerString = headerString[:ctEndIndex]
+		} else if !strings.Contains(headerString, ":") {
+			headerString = ""
+		}
+		if headerString != "" {
+			Headers = append(Headers, strings.Split(headerString, ",")...)
+		}
+	}
+
+	Headers = append(Headers, "Content-Type: "+newContentType)
 }
