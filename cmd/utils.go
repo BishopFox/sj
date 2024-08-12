@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -288,7 +289,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 				s.Query.Add(param.Value.Name, "test")
 			}
 
-		} else if param.Value.In == "header" && param.Value.Required {
+		} else if param.Value.In == "header" && param.Value.Required && strings.ToLower(param.Value.Name) != "content-type" {
 			Headers = append(Headers, fmt.Sprintf("%s: %s", param.Value.Name, "1"))
 		} else if param.Value.In == "body" {
 			if param.Value.Schema.Ref != "" {
@@ -328,9 +329,35 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 						}
 						s.BodyData = []byte(strings.Join(formData, "&"))
 					} else if strings.Contains(i, "xml") {
-						// TODO
+						type Element struct {
+							XMLName xml.Name
+							Content any `xml:",chardata"`
+						}
+
+						type Root struct {
+							XMLName  xml.Name  `xml:"root"`
+							Elements []Element `xml:",any"`
+						}
+
+						var elements []Element
+						for key, value := range s.Body {
+							elements = append(elements, Element{
+								XMLName: xml.Name{Local: key},
+								Content: value,
+							})
+						}
+
+						root := Root{
+							Elements: elements,
+						}
+
+						xmlData, err := xml.Marshal(root)
+						if err != nil {
+							log.Warn("Error marshalling XML data.")
+						}
+						s.BodyData = xmlData
 					} else {
-						// TODO
+						log.Warnf("Content type not supported. Test this path manually: %s (Content type: %s)\n", s.URL.Path, i)
 					}
 				} else {
 					var formData []string
@@ -360,11 +387,34 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 							} else if strings.Contains(i, "json") || i == "*/*" {
 								s.BodyData, _ = json.Marshal(s.Body)
 							} else if strings.Contains(i, "xml") {
-								for element := range s.Body {
-									fmt.Printf("<%s>test</%s>\n", element, element)
+								//
+								type Element struct {
+									XMLName xml.Name
+									Content any `xml:",chardata"`
 								}
 
-								//s.BodyData, _ = xml.Marshal(s.Body)
+								type Root struct {
+									XMLName  xml.Name  `xml:"root"`
+									Elements []Element `xml:",any"`
+								}
+
+								var elements []Element
+								for key, value := range s.Body {
+									elements = append(elements, Element{
+										XMLName: xml.Name{Local: key},
+										Content: value,
+									})
+								}
+
+								root := Root{
+									Elements: elements,
+								}
+
+								xmlData, err := xml.Marshal(root)
+								if err != nil {
+									log.Warn("Error marshalling XML data.")
+								}
+								s.BodyData = xmlData
 							} else {
 								s.Body["test"] = "test"
 								s.BodyData = []byte("test=test")
@@ -647,6 +697,7 @@ func CheckAndConfigureProxy() (client http.Client) {
 }
 
 func EnforceSingleContentType(newContentType string) {
+	newContentType = strings.TrimSpace(newContentType)
 	if Headers != nil {
 		headerString := strings.Join(Headers, ",")
 		Headers = nil

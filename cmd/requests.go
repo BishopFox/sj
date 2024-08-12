@@ -104,7 +104,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 			}
 			req.Header.Set(h[0], h[1])
 		} else {
-			log.Fatal("Custom header provided cannot be used.")
+			log.Warnf("Header provided (%s) cannot be used. Headers must be in 'Key: Value' format (this may be caused by a header declared within the definition file).\n", Headers[i])
 		}
 	}
 
