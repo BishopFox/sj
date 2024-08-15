@@ -47,13 +47,13 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 	u, _ := url.Parse(swaggerURL)
 	s.URL = *u
 
-	if os.Args[1] != "endpoints" {
+	if os.Args[1] != "endpoints" && strings.ToLower(outputFormat) == "console" {
 		// Prints Title/Description values if they exist
 		PrintSpecInfo(*s.Def.Info)
 	}
 
 	if os.Args[1] == "automate" && outfile != "" {
-		WriteJSONFile(`"results":[`, false)
+		WriteJSONFile(`{"results":[`, false)
 	}
 
 	if s.Def.Paths == nil {
@@ -198,7 +198,7 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 
 	s.URL.RawQuery = s.Query.Encode()
 	if os.Args[1] == "automate" {
-		_, _, sc := MakeRequest(client, method, s.URL.String(), timeout, bytes.NewReader(s.BodyData))
+		_, resp, sc := MakeRequest(client, method, s.URL.String(), timeout, bytes.NewReader(s.BodyData))
 		if sc == 200 {
 			accessibleEndpointFound = true
 			accessibleEndpoints = append(accessibleEndpoints, s.URL.String())
@@ -211,6 +211,7 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 				}
 			} else {
 				result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)])
+
 				WriteJSONFile(result, false)
 			}
 			time.Sleep(1 * time.Second)
@@ -228,7 +229,11 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 					}
 				}
 			} else if !getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
-				writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)])
+				if verbose {
+					writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+				} else {
+					writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], "")
+				}
 			}
 		}
 	} else if os.Args[1] == "prepare" {
