@@ -323,106 +323,108 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 				} else {
 					EnforceSingleContentType(contentType)
 				}
-				if op.RequestBody.Value.Content.Get(i).Schema.Value == nil {
-					s = s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Ref, op.RequestBody, 0)
-					if strings.Contains(i, "json") {
-						s.BodyData, _ = json.Marshal(s.Body)
-					} else if strings.Contains(i, "x-www-form-urlencoded") {
-						var formData []string
-						for j := range s.Body {
-							formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
-						}
-						s.BodyData = []byte(strings.Join(formData, "&"))
-					} else if strings.Contains(i, "xml") {
-						type Element struct {
-							XMLName xml.Name
-							Content any `xml:",chardata"`
-						}
-
-						type Root struct {
-							XMLName  xml.Name  `xml:"root"`
-							Elements []Element `xml:",any"`
-						}
-
-						var elements []Element
-						for key, value := range s.Body {
-							elements = append(elements, Element{
-								XMLName: xml.Name{Local: key},
-								Content: value,
-							})
-						}
-
-						root := Root{
-							Elements: elements,
-						}
-
-						xmlData, err := xml.Marshal(root)
-						if err != nil {
-							log.Warn("Error marshalling XML data.")
-						}
-						s.BodyData = xmlData
-					} else {
-						log.Warnf("Content type not supported. Test this path manually: %s (Content type: %s)\n", s.URL.Path, i)
-					}
-				} else {
-					var formData []string
-
-					for j := range op.RequestBody.Value.Content.Get(i).Schema.Value.Properties {
-						if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Ref != "" {
-							s = s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Ref, op.RequestBody, 0)
-						} else {
-							var valueType string = op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value.Type
-							if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
-								if valueType == "string" {
-									s.Body[j] = "test"
-								} else if valueType == "boolean" {
-									s.Body[j] = false
-								} else if valueType == "integer" || valueType == "number" {
-									s.Body[j] = 1
-								} else {
-									s.Body[j] = "unknown_type_populate_manually"
-								}
-								if i == "application/x-www-form-urlencoded" {
-									formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
-								}
+				if op.RequestBody.Value.Content.Get(i).Schema != nil {
+					if op.RequestBody.Value.Content.Get(i).Schema.Value == nil {
+						s = s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Ref, op.RequestBody, 0)
+						if strings.Contains(i, "json") {
+							s.BodyData, _ = json.Marshal(s.Body)
+						} else if strings.Contains(i, "x-www-form-urlencoded") {
+							var formData []string
+							for j := range s.Body {
+								formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
+							}
+							s.BodyData = []byte(strings.Join(formData, "&"))
+						} else if strings.Contains(i, "xml") {
+							type Element struct {
+								XMLName xml.Name
+								Content any `xml:",chardata"`
 							}
 
-							if i == "application/x-www-form-urlencoded" {
-								s.BodyData = []byte(strings.Join(formData, "&"))
-							} else if strings.Contains(i, "json") || i == "*/*" {
-								s.BodyData, _ = json.Marshal(s.Body)
-							} else if strings.Contains(i, "xml") {
-								//
-								type Element struct {
-									XMLName xml.Name
-									Content any `xml:",chardata"`
-								}
+							type Root struct {
+								XMLName  xml.Name  `xml:"root"`
+								Elements []Element `xml:",any"`
+							}
 
-								type Root struct {
-									XMLName  xml.Name  `xml:"root"`
-									Elements []Element `xml:",any"`
-								}
+							var elements []Element
+							for key, value := range s.Body {
+								elements = append(elements, Element{
+									XMLName: xml.Name{Local: key},
+									Content: value,
+								})
+							}
 
-								var elements []Element
-								for key, value := range s.Body {
-									elements = append(elements, Element{
-										XMLName: xml.Name{Local: key},
-										Content: value,
-									})
-								}
+							root := Root{
+								Elements: elements,
+							}
 
-								root := Root{
-									Elements: elements,
-								}
+							xmlData, err := xml.Marshal(root)
+							if err != nil {
+								log.Warn("Error marshalling XML data.")
+							}
+							s.BodyData = xmlData
+						} else {
+							log.Warnf("Content type not supported. Test this path manually: %s (Content type: %s)\n", s.URL.Path, i)
+						}
+					} else {
+						var formData []string
 
-								xmlData, err := xml.Marshal(root)
-								if err != nil {
-									log.Warn("Error marshalling XML data.")
-								}
-								s.BodyData = xmlData
+						for j := range op.RequestBody.Value.Content.Get(i).Schema.Value.Properties {
+							if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Ref != "" {
+								s = s.SetParametersFromSchema(nil, "body", op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Ref, op.RequestBody, 0)
 							} else {
-								s.Body["test"] = "test"
-								s.BodyData = []byte("test=test")
+								var valueType string = op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value.Type
+								if op.RequestBody.Value.Content.Get(i).Schema.Value.Properties[j].Value != nil {
+									if valueType == "string" {
+										s.Body[j] = "test"
+									} else if valueType == "boolean" {
+										s.Body[j] = false
+									} else if valueType == "integer" || valueType == "number" {
+										s.Body[j] = 1
+									} else {
+										s.Body[j] = "unknown_type_populate_manually"
+									}
+									if i == "application/x-www-form-urlencoded" {
+										formData = append(formData, fmt.Sprintf("%s=%s", j, fmt.Sprint(s.Body[j])))
+									}
+								}
+
+								if i == "application/x-www-form-urlencoded" {
+									s.BodyData = []byte(strings.Join(formData, "&"))
+								} else if strings.Contains(i, "json") || i == "*/*" {
+									s.BodyData, _ = json.Marshal(s.Body)
+								} else if strings.Contains(i, "xml") {
+									//
+									type Element struct {
+										XMLName xml.Name
+										Content any `xml:",chardata"`
+									}
+
+									type Root struct {
+										XMLName  xml.Name  `xml:"root"`
+										Elements []Element `xml:",any"`
+									}
+
+									var elements []Element
+									for key, value := range s.Body {
+										elements = append(elements, Element{
+											XMLName: xml.Name{Local: key},
+											Content: value,
+										})
+									}
+
+									root := Root{
+										Elements: elements,
+									}
+
+									xmlData, err := xml.Marshal(root)
+									if err != nil {
+										log.Warn("Error marshalling XML data.")
+									}
+									s.BodyData = xmlData
+								} else {
+									s.Body["test"] = "test"
+									s.BodyData = []byte("test=test")
+								}
 							}
 						}
 					}

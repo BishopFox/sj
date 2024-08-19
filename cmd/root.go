@@ -15,7 +15,6 @@ var outfile string
 var proxy string
 var quiet bool
 var randomUserAgent bool
-var responsePreviewLength int
 var safeWords []string
 var swaggerURL string
 var timeout int64
@@ -47,7 +46,7 @@ $ sj brute -u https://petstore.swagger.io`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.7.0",
+	Version: "1.7.1",
 }
 
 func Execute() {

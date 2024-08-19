@@ -13,6 +13,7 @@ import (
 
 var getAccessibleEndpoints bool
 var outputFormat string
+var responsePreviewLength int
 var verbose bool
 
 var automateCmd = &cobra.Command{
