@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -14,10 +16,26 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 		responsePreviewLength = len(response)
 	}
 
-	if strings.Contains(response, "\"") {
-		log.SetFormatter(&log.TextFormatter{DisableQuote: true, DisableTimestamp: true})
+	if outfile != "" {
+		file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+		if err != nil {
+			fmt.Println("Output file does not exist or cannot be created")
+			os.Exit(1)
+		}
+
+		defer file.Close()
+
+		log.SetOutput(file)
+	}
+
+	if outputFormat == "console" {
+		if strings.Contains(response, "\"") {
+			log.SetFormatter(&log.TextFormatter{DisableQuote: true, DisableTimestamp: true})
+		} else {
+			log.SetFormatter(&log.TextFormatter{DisableTimestamp: true})
+		}
 	} else {
-		log.SetFormatter(&log.TextFormatter{DisableTimestamp: true})
+		log.SetFormatter(&log.JSONFormatter{DisableHTMLEscape: true, DisableTimestamp: true})
 	}
 
 	if verbose {

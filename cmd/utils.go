@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
@@ -11,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/getkin/kin-openapi/openapi2"
 	"github.com/getkin/kin-openapi/openapi2conv"
@@ -37,7 +35,6 @@ type SwaggerRequest struct {
 }
 
 var accessibleEndpoints []string
-var specJSON string
 
 func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
@@ -47,13 +44,9 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 	u, _ := url.Parse(swaggerURL)
 	s.URL = *u
 
-	if os.Args[1] != "endpoints" && strings.ToLower(outputFormat) == "console" {
+	if os.Args[1] != "endpoints" {
 		// Prints Title/Description values if they exist
 		PrintSpecInfo(*s.Def.Info)
-	}
-
-	if os.Args[1] == "automate" && outfile != "" {
-		WriteJSONFile(`{"results":[`, false)
 	}
 
 	if s.Def.Paths == nil {
@@ -130,16 +123,6 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 					isDuplicateEndpoint = false
 				}
 			}
-		} else if outfile == "" && strings.ToLower(outputFormat) == "json" {
-			results := strings.Join(s.ResultsJSON, ",")
-			fmt.Printf(`%s"results":[%s]}%s`, specJSON, results, "\n")
-		} else if outfile != "" {
-			if accessibleEndpoints == nil {
-				WriteJSONFile("]}\n", false)
-			} else {
-				WriteJSONFile(",", true)
-			}
-			log.Infof("Results written to %s", outfile)
 		}
 	}
 	return s.Paths
@@ -203,39 +186,18 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 			accessibleEndpointFound = true
 			accessibleEndpoints = append(accessibleEndpoints, s.URL.String())
 		}
-		if outfile != "" {
+		if strings.ToLower(outputFormat) != "console" {
 			if getAccessibleEndpoints {
 				if sc == 200 {
-					result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)])
-					WriteJSONFile(result, false)
+					writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
 				}
 			} else {
-				result := fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"},`, sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)])
-
-				WriteJSONFile(result, false)
+				writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
 			}
-			time.Sleep(1 * time.Second)
-		} else if outfile == "" {
-			if strings.ToLower(outputFormat) != "console" {
-				if getAccessibleEndpoints {
-					if sc == 200 {
-						s.ResultsJSON = append(s.ResultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)]))
-					}
-				} else {
-					if sc == 1 {
-						s.ResultsJSON = append(s.ResultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"Skipped due to dangerous keyword in request"}`, sc, s.URL.String(), method))
-					} else {
-						s.ResultsJSON = append(s.ResultsJSON, fmt.Sprintf(`{"status_code":"%d","url":"%s","method":"%s","details":"%s"}`, sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)]))
-					}
-				}
-			} else if !getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
-				if verbose {
-					writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
-				} else {
-					writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], "")
-				}
-			}
+		} else {
+			writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
 		}
+		//}
 	} else if os.Args[1] == "prepare" {
 		s.PrintPreparedCommands(method)
 	} else if os.Args[1] == "endpoints" {
@@ -507,10 +469,7 @@ func (s SwaggerRequest) GetBasePath() string {
 }
 
 func PrintSpecInfo(i openapi3.Info) {
-	specJSON = fmt.Sprintf(`{"title":"%s","description":"%s",`, i.Title, i.Description)
-	if outfile != "" {
-		WriteJSONFile(specJSON, false)
-	} else if strings.ToLower(outputFormat) == "console" {
+	if strings.ToLower(outputFormat) == "console" {
 		if i.Title != "" {
 			fmt.Println("Title:", i.Title)
 		}
@@ -521,6 +480,30 @@ func PrintSpecInfo(i openapi3.Info) {
 
 		if i.Title == "" && i.Description == "" {
 			log.Warnf("Detected possible error in parsing the definition file. Title and description values are empty.\n\n")
+		}
+	} else if strings.ToLower(outputFormat) == "json" {
+		titleDescriptionLogger := log.New()
+		titleDescriptionLogger.SetFormatter(&log.JSONFormatter{DisableTimestamp: true, DisableHTMLEscape: true})
+		if outfile != "" {
+			file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+			if err != nil {
+				fmt.Println("Output file does not exist or cannot be created")
+				os.Exit(1)
+			}
+
+			defer file.Close()
+
+			titleDescriptionLogger.SetOutput(file)
+		}
+
+		if i.Title != "" {
+			titleDescriptionLogger.WithField("Title:", i.Title).Print("N/A")
+		}
+		if i.Description != "" {
+			titleDescriptionLogger.WithField("Description:", i.Description).Print("N/A")
+		}
+		if i.Title == "" && i.Description == "" {
+			log.Warn("Detected possible error in parsing the definition file. Title and description values are empty.")
 		}
 	}
 }
@@ -585,51 +568,6 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 		log.Fatal("Error parsing definition file.")
 		return nil
 	}
-}
-
-func WriteJSONFile(result string, end bool) {
-	if end {
-		file, err := os.OpenFile(outfile, os.O_RDWR, 0644)
-
-		if err != nil {
-			fmt.Println("File does not exist or cannot be created")
-			os.Exit(1)
-		}
-		defer file.Close()
-
-		w := bufio.NewWriter(file)
-
-		fileInfo, err := file.Stat()
-		if err != nil {
-			log.Error("Failed to get file info:", err)
-		}
-		fileSize := fileInfo.Size()
-		if fileSize != 0 {
-			lastChar := fileSize - 1
-
-			_, err = file.Seek(lastChar, 0)
-			if err != nil {
-				log.Error("Error seeking to last character", err)
-			}
-			fmt.Fprintf(w, "]}\n")
-
-		}
-		w.Flush()
-	} else {
-		file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
-
-		if err != nil {
-			fmt.Println("File does not exist or cannot be created")
-			os.Exit(1)
-		}
-		defer file.Close()
-
-		w := bufio.NewWriter(file)
-
-		fmt.Fprintf(w, "%s", result)
-		w.Flush()
-	}
-
 }
 
 func ExtractSpecFromJS(bodyBytes []byte) []byte {
