@@ -9,7 +9,8 @@ import (
 )
 
 func writeLog(sc int, target, method, errorMsg, response string) {
-
+	var file *os.File
+	tempLogger := log.New()
 	tempResponsePreviewLength := responsePreviewLength
 
 	if len(response) < responsePreviewLength {
@@ -23,71 +24,70 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 			os.Exit(1)
 		}
 
-		defer file.Close()
-
-		log.SetOutput(file)
+		tempLogger.SetOutput(file)
 	}
 
 	if outputFormat == "console" {
 		if strings.Contains(response, "\"") {
-			log.SetFormatter(&log.TextFormatter{DisableQuote: true, DisableTimestamp: true})
+			tempLogger.SetFormatter(&log.TextFormatter{DisableQuote: true, DisableTimestamp: true})
 		} else {
-			log.SetFormatter(&log.TextFormatter{DisableTimestamp: true})
+			tempLogger.SetFormatter(&log.TextFormatter{DisableTimestamp: true})
 		}
 	} else {
-		log.SetFormatter(&log.JSONFormatter{DisableHTMLEscape: true, DisableTimestamp: true})
+		tempLogger.SetFormatter(&log.JSONFormatter{DisableHTMLEscape: true, DisableTimestamp: true})
 	}
 
 	if verbose {
 		if sc != 200 {
 			if sc == 401 || sc == 403 {
-				logVerboseUnauth(sc, target, method, errorMsg, response)
+				logVerboseUnauth(sc, target, method, errorMsg, response, tempLogger)
 			} else if sc == 301 || sc == 302 {
-				logVerboseRedirect(sc, target, method, response)
+				logVerboseRedirect(sc, target, method, response, tempLogger)
 			} else if sc == 0 {
-				logVerboseBad(sc, target, method, response)
+				logVerboseBad(sc, target, method, response, tempLogger)
 			} else if sc == 404 {
-				logNotFound(sc, target, method, errorMsg)
+				logNotFound(sc, target, method, errorMsg, tempLogger)
 			} else if sc == 1 {
-				logDangerous(target, method)
+				logDangerous(target, method, tempLogger)
 			} else {
-				logVerboseManual(sc, target, method, errorMsg, response)
+				logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
 			}
 		} else {
-			logVerboseAccessible(sc, target, method, response)
+			logVerboseAccessible(sc, target, method, response, tempLogger)
 		}
 	} else {
 		if sc != 200 {
 			if sc == 401 || sc == 403 {
-				logUnauth(sc, target, method, errorMsg)
+				logUnauth(sc, target, method, errorMsg, tempLogger)
 			} else if sc == 301 || sc == 302 {
-				logRedirect(sc, target, method)
+				logRedirect(sc, target, method, tempLogger)
 			} else if sc == 0 {
-				logBad(sc, target, method)
+				logBad(sc, target, method, tempLogger)
 			} else if sc == 404 {
-				logNotFound(sc, target, method, errorMsg)
+				logNotFound(sc, target, method, errorMsg, tempLogger)
 			} else if sc == 1 {
-				logDangerous(target, method)
+				logDangerous(target, method, tempLogger)
 			} else {
-				logManual(sc, target, method, errorMsg)
+				logManual(sc, target, method, errorMsg, tempLogger)
 			}
 		} else {
-			logAccessible(sc, target, method)
+			logAccessible(sc, target, method, tempLogger)
 		}
 	}
 	responsePreviewLength = tempResponsePreviewLength
+	file.Close()
 }
 
-func logAccessible(status int, target, method string) {
-	log.WithFields(log.Fields{
+func logAccessible(status int, target, method string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status": status,
 		"Target": target,
 		"Method": method,
 	}).Print("Endpoint accessible!")
 }
 
-func logVerboseAccessible(status int, target, method, response string) {
-	log.WithFields(log.Fields{
+func logVerboseAccessible(status int, target, method, response string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status":  status,
 		"Target":  target,
 		"Method":  method,
@@ -95,30 +95,30 @@ func logVerboseAccessible(status int, target, method, response string) {
 	}).Print("Endpoint accessible!")
 }
 
-func logDangerous(target, method string) {
-	log.WithFields(log.Fields{
+func logDangerous(target, method string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status": "skipped",
 		"Target": target,
 		"Method": method,
-	}).Warn("Endpoint skipped due to dangerous keyword.")
+	}).Warn("Endpoint skipped due to dangerous keyword (or request cancelled due to timeout).")
 }
 
-func logManual(status int, target, method, errorMsg string) {
+func logManual(status int, target, method, errorMsg string, logger *log.Logger) {
 	if errorMsg == "" {
 		errorMsg = "Manual testing may be required."
 	}
-	log.WithFields(log.Fields{
+	logger.WithFields(log.Fields{
 		"Status": status,
 		"Target": target,
 		"Method": method,
 	}).Warn(errorMsg)
 }
 
-func logVerboseManual(status int, target, method, errorMsg, response string) {
+func logVerboseManual(status int, target, method, errorMsg, response string, logger *log.Logger) {
 	if errorMsg == "" {
 		errorMsg = "Manual testing may be required."
 	}
-	log.WithFields(log.Fields{
+	logger.WithFields(log.Fields{
 		"Status":  status,
 		"Target":  target,
 		"Method":  method,
@@ -126,27 +126,27 @@ func logVerboseManual(status int, target, method, errorMsg, response string) {
 	}).Warn(errorMsg)
 }
 
-func logNotFound(status int, target, method, errorMsg string) {
+func logNotFound(status int, target, method, errorMsg string, logger *log.Logger) {
 	if errorMsg == "" {
 		errorMsg = "Endpoint not found."
 	}
-	log.WithFields(log.Fields{
+	logger.WithFields(log.Fields{
 		"Status": status,
 		"Target": target,
 		"Method": method,
 	}).Error(errorMsg)
 }
 
-func logRedirect(status int, target, method string) {
-	log.WithFields(log.Fields{
+func logRedirect(status int, target, method string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status": status,
 		"Target": target,
 		"Method": method,
 	}).Error("Redirect detected. This likely requires authentication.")
 }
 
-func logVerboseRedirect(status int, target, method, response string) {
-	log.WithFields(log.Fields{
+func logVerboseRedirect(status int, target, method, response string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status":  status,
 		"Target":  target,
 		"Method":  method,
@@ -154,16 +154,16 @@ func logVerboseRedirect(status int, target, method, response string) {
 	}).Error("Redirect detected. This likely requires authentication.")
 }
 
-func logBad(status int, target, method string) {
-	log.WithFields(log.Fields{
+func logBad(status int, target, method string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status": "N/A",
 		"Target": target,
 		"Method": method,
 	}).Warn("Bad request (could not reach the target).")
 }
 
-func logVerboseBad(status int, target, method, response string) {
-	log.WithFields(log.Fields{
+func logVerboseBad(status int, target, method, response string, logger *log.Logger) {
+	logger.WithFields(log.Fields{
 		"Status":  "N/A",
 		"Target":  target,
 		"Method":  method,
@@ -171,22 +171,22 @@ func logVerboseBad(status int, target, method, response string) {
 	}).Warn("Bad request (could not reach the target).")
 }
 
-func logUnauth(status int, target, method, errorMsg string) {
+func logUnauth(status int, target, method, errorMsg string, logger *log.Logger) {
 	if errorMsg == "" {
 		errorMsg = "Unauthorized."
 	}
-	log.WithFields(log.Fields{
+	logger.WithFields(log.Fields{
 		"Status": status,
 		"Target": target,
 		"Method": method,
 	}).Error(errorMsg)
 }
 
-func logVerboseUnauth(status int, target, method, errorMsg, response string) {
+func logVerboseUnauth(status int, target, method, errorMsg, response string, logger *log.Logger) {
 	if errorMsg == "" {
 		errorMsg = "Unauthorized."
 	}
-	log.WithFields(log.Fields{
+	logger.WithFields(log.Fields{
 		"Status":  status,
 		"Target":  target,
 		"Method":  method,
