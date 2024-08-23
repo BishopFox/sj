@@ -195,7 +195,9 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 				writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
 			}
 		} else {
-			writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+			if !getAccessibleEndpoints {
+				writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+			}
 		}
 		//}
 	} else if os.Args[1] == "prepare" {
