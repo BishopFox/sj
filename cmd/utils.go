@@ -183,7 +183,6 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 	if os.Args[1] == "automate" {
 		_, resp, sc := MakeRequest(client, method, s.URL.String(), timeout, bytes.NewReader(s.BodyData))
 		if sc == 200 {
-			accessibleEndpointFound = true
 			accessibleEndpoints = append(accessibleEndpoints, s.URL.String())
 		}
 		if strings.ToLower(outputFormat) != "console" {

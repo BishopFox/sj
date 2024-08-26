@@ -5,7 +5,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var accessibleEndpointFound bool
 var apiTarget string
 var basePath string
 var format string
@@ -39,14 +38,17 @@ Generate a list of raw API routes for use with custom scripts:
 $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json
 
 Perform a brute-force attack against the target to identify hidden definition files:
-$ sj brute -u https://petstore.swagger.io`,
+$ sj brute -u https://petstore.swagger.io
+
+Convert a Swagger (v2) definition file to an OpenAPI (v3) definition file:
+$ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.7.4",
+	Version: "1.8.0",
 }
 
 func Execute() {
@@ -58,6 +60,7 @@ func init() {
 	rootCmd.AddCommand(endpointsCmd)
 	rootCmd.AddCommand(prepareCmd)
 	rootCmd.AddCommand(bruteCmd)
+	rootCmd.AddCommand(convertCmd)
 	rootCmd.PersistentFlags().StringVarP(&UserAgent, "agent", "a", "Swagger Jacker (github.com/BishopFox/sj)", "Set the User-Agent string.")
 	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the definition file (i.e. /V2/).")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the definition file (json/yaml/yml/js).")

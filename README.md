@@ -4,11 +4,12 @@
 
 sj is a command line tool designed to assist with auditing of exposed Swagger/OpenAPI definition files by checking the associated API endpoints for weak authentication. It also provides command templates for manual vulnerability testing.
 
-It does this by parsing the definition file for paths, parameters, and accepted methods before using the results with one of four commands:
+It does this by parsing the definition file for paths, parameters, and accepted methods before using the results with one of five sub-commands:
 - `automate` - Crafts a series of requests and analyzes the status code of the response.
 - `prepare` - Generates a list of commands to use for manual testing.
 - `endpoints` - Generates a list of raw API routes. *Path values will not be replaced with test data*.
 - `brute` - Sends a series of requests to a target to find operation definitions based on commonly used file paths.
+- `convert` - Converts a definition file from v2 to v3.
 
 ## Build
 
@@ -132,6 +133,16 @@ INFO[0015] Definition file found: https://petstore.swagger.io/v2/swagger
 {"...SNIP..."}
 ```
 
+> Use the `convert` command to convert a definition file from version 2 to version 3.
+
+```bash
+$ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json
+
+INFO[0000] Gathering API details.
+                      
+INFO[0000] Wrote file to /current/directory/openapi.json 
+```
+
 ## Help
 
 A full list of commands can be found by using the `--help` flag:
@@ -157,6 +168,9 @@ $ sj endpoints -u https://petstore.swagger.io/v2/swagger.json
 Perform a brute-force attack against the target to identify hidden definition files:
 $ sj brute -u https://petstore.swagger.io
 
+Convert a Swagger (v2) definition file to an OpenAPI (v3) definition file:
+$ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json
+
 Usage:
   sj [flags]
   sj [command]
@@ -164,6 +178,7 @@ Usage:
 Available Commands:
   automate    Sends a series of automated requests to the discovered endpoints.
   brute       Sends a series of automated requests to discover hidden API operation definitions.
+  convert     Converts a Swagger definition file to an OpenAPI v3 definition file.
   endpoints   Prints a list of endpoints from the target.
   help        Help about any command
   prepare     Prepares a set of commands for manual testing of each endpoint.
