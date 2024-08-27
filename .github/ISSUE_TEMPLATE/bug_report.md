@@ -19,7 +19,7 @@ A code block containing the command executed with output:
 $ sj automate -u https://petstore.swagger.io/v2/swagger.json
 [SOME OUTPUT AND/OR ERROR HERE]
 
-#Note: To maintain privacy, please omit any IP address, URL, organizational information contained within the definition file, etc.*
+#Note: To maintain privacy, please omit any IP address, URL, organizational information contained within the definition file, etc.
 ```
 
 **Expected behavior**
