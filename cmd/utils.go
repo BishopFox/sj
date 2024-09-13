@@ -216,7 +216,7 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 // This whole function needs to be refactored/cleaned up a bit
 func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRequest {
 	for _, param := range op.Parameters {
-		if param.Value == nil && param.Value.Schema.Ref == "" {
+		if param.Value == nil || param.Value.Schema.Ref == "" {
 			continue
 		} else if param.Value.In == "path" {
 			if param.Value.Schema != nil {
