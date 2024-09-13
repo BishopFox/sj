@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"math/rand"
@@ -192,4 +193,27 @@ func CheckContentType(client http.Client, target string) string {
 		return ""
 	}
 	return resp.Header.Get("Content-Type")
+}
+
+func CheckAndConfigureProxy() (client http.Client) {
+	var proxyUrl *url.URL
+
+	transport := &http.Transport{}
+
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	if proxy != "NOPROXY" {
+		proxyUrl, _ = url.Parse(proxy)
+		transport.Proxy = http.ProxyURL(proxyUrl)
+	}
+
+	client = http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	return client
 }

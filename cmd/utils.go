@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi2"
@@ -35,6 +35,8 @@ type SwaggerRequest struct {
 }
 
 var accessibleEndpoints []string
+var consoleResults map[int][]any
+var jsonResults []string
 
 func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
@@ -104,6 +106,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 		s = s.IterateOverPaths(client)
 	}
 
+	sort.Strings(jsonResults)
 	if os.Args[1] == "automate" {
 		if outfile == "" && getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
 			var isDuplicateEndpoint bool
@@ -122,6 +125,18 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 					}
 					isDuplicateEndpoint = false
 				}
+			}
+		}
+		if strings.ToLower(outputFormat) == "json" {
+			writeLog(8899, s.Def.Info.Title, s.Def.Info.Description, "", "") // This is a temporary workaround to get the logging to work as intended.. needs to be fixed eventually.
+		} else if strings.ToLower(outputFormat) == "console" && !getAccessibleEndpoints {
+			for i := range consoleResults {
+				st, _ := consoleResults[i][0].(int)
+				t, _ := consoleResults[i][1].(string)
+				m, _ := consoleResults[i][2].(string)
+				e, _ := consoleResults[i][3].(string)
+				r, _ := consoleResults[i][4].(string)
+				writeLog(st, t, m, e, r)
 			}
 		}
 	}
@@ -181,24 +196,48 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 
 	s.URL.RawQuery = s.Query.Encode()
 	if os.Args[1] == "automate" {
+		tempResponsePreviewLength := responsePreviewLength
 		_, resp, sc := MakeRequest(client, method, s.URL.String(), timeout, bytes.NewReader(s.BodyData))
+		if len(resp) < responsePreviewLength {
+			tempResponsePreviewLength = len(resp)
+		}
 		if sc == 200 {
 			accessibleEndpoints = append(accessibleEndpoints, s.URL.String())
 		}
 		if strings.ToLower(outputFormat) != "console" {
+			var result []byte
 			if getAccessibleEndpoints {
 				if sc == 200 {
-					writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+					if verbose {
+						result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: s.URL.String()})
+					} else {
+						result, _ = json.Marshal(Result{Method: method, Status: sc, Target: s.URL.String()})
+					}
+					jsonResults = append(jsonResults, ","+string(result))
 				}
 			} else {
-				writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+				if verbose {
+					result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: s.URL.String()})
+				} else {
+					result, _ = json.Marshal(Result{Method: method, Status: sc, Target: s.URL.String()})
+				}
+				jsonResults = append(jsonResults, string(result))
 			}
 		} else {
 			if !getAccessibleEndpoints {
-				writeLog(sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+				if consoleResults == nil {
+					consoleResults = make(map[int][]any)
+				}
+				n := len(consoleResults)
+				if n != 0 {
+					n = n + 1
+				}
+				var r []any
+				r = append(r, sc, s.URL.String(), method, errorDescriptions[fmt.Sprint(sc)], resp)
+
+				consoleResults[n] = r
 			}
 		}
-		//}
 	} else if os.Args[1] == "prepare" {
 		s.PrintPreparedCommands(method)
 	} else if os.Args[1] == "endpoints" {
@@ -402,33 +441,6 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 	return s
 }
 
-func (s SwaggerRequest) PrintPreparedCommands(method string) {
-	var preparedCommand string
-	if strings.ToLower(prepareFor) == "curl" {
-		preparedCommand = fmt.Sprintf("curl -sk -X %s '%s'", method, s.URL.String())
-	} else if strings.ToLower(prepareFor) == "sqlmap" {
-		preparedCommand = fmt.Sprintf("sqlmap --method=%s -u %s", method, s.URL.String())
-	} else if strings.ToLower(prepareFor) == "ffuf" {
-		log.Fatal("ffuf is not supported yet :(")
-		// TODO
-	} else {
-		log.Fatal("External tool not supported. Only 'curl' and 'sqlmap' are supported options for the '-e' flag at this time.")
-	}
-
-	if s.BodyData != nil {
-		if strings.ToLower(prepareFor) == "sqlmap" {
-			preparedCommand = preparedCommand + fmt.Sprintf(" --data='%s'", s.BodyData)
-		} else {
-			preparedCommand = preparedCommand + fmt.Sprintf(" -d '%s'", s.BodyData)
-		}
-	}
-	if len(Headers) != 0 {
-		preparedCommand = preparedCommand + fmt.Sprintf(" -H '%s'", strings.Join(Headers, "' -H '"))
-	}
-
-	fmt.Println(preparedCommand)
-}
-
 func (s SwaggerRequest) GetBasePath() string {
 	if basePath == "" {
 		if s.Def.Servers != nil {
@@ -481,30 +493,6 @@ func PrintSpecInfo(i openapi3.Info) {
 
 		if i.Title == "" && i.Description == "" {
 			log.Warnf("Detected possible error in parsing the definition file. Title and description values are empty.\n\n")
-		}
-	} else if strings.ToLower(outputFormat) == "json" {
-		titleDescriptionLogger := log.New()
-		titleDescriptionLogger.SetFormatter(&log.JSONFormatter{DisableTimestamp: true, DisableHTMLEscape: true})
-		if outfile != "" {
-			file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
-			if err != nil {
-				fmt.Println("Output file does not exist or cannot be created")
-				os.Exit(1)
-			}
-
-			defer file.Close()
-
-			titleDescriptionLogger.SetOutput(file)
-		}
-
-		if i.Title != "" {
-			titleDescriptionLogger.WithField("Title:", i.Title).Print("N/A")
-		}
-		if i.Description != "" {
-			titleDescriptionLogger.WithField("Description:", i.Description).Print("N/A")
-		}
-		if i.Title == "" && i.Description == "" {
-			log.Warn("Detected possible error in parsing the definition file. Title and description values are empty.")
 		}
 	}
 }
@@ -617,29 +605,6 @@ func ExtractSpecFromJS(bodyBytes []byte) []byte {
 	}
 
 	return bodyBytes
-}
-
-func CheckAndConfigureProxy() (client http.Client) {
-	var proxyUrl *url.URL
-
-	transport := &http.Transport{}
-
-	if insecure {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
-
-	if proxy != "NOPROXY" {
-		proxyUrl, _ = url.Parse(proxy)
-		transport.Proxy = http.ProxyURL(proxyUrl)
-	}
-
-	client = http.Client{
-		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	return client
 }
 
 func EnforceSingleContentType(newContentType string) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -34,6 +35,33 @@ This enables you to test specific API functions for common vulnerabilities or mi
 	},
 }
 var prepareFor string
+
+func (s SwaggerRequest) PrintPreparedCommands(method string) {
+	var preparedCommand string
+	if strings.ToLower(prepareFor) == "curl" {
+		preparedCommand = fmt.Sprintf("curl -sk -X %s '%s'", method, s.URL.String())
+	} else if strings.ToLower(prepareFor) == "sqlmap" {
+		preparedCommand = fmt.Sprintf("sqlmap --method=%s -u %s", method, s.URL.String())
+	} else if strings.ToLower(prepareFor) == "ffuf" {
+		log.Fatal("ffuf is not supported yet :(")
+		// TODO
+	} else {
+		log.Fatal("External tool not supported. Only 'curl' and 'sqlmap' are supported options for the '-e' flag at this time.")
+	}
+
+	if s.BodyData != nil {
+		if strings.ToLower(prepareFor) == "sqlmap" {
+			preparedCommand = preparedCommand + fmt.Sprintf(" --data='%s'", s.BodyData)
+		} else {
+			preparedCommand = preparedCommand + fmt.Sprintf(" -d '%s'", s.BodyData)
+		}
+	}
+	if len(Headers) != 0 {
+		preparedCommand = preparedCommand + fmt.Sprintf(" -H '%s'", strings.Join(Headers, "' -H '"))
+	}
+
+	fmt.Println(preparedCommand)
+}
 
 func init() {
 	prepareCmd.PersistentFlags().StringVarP(&prepareFor, "external-tool", "e", "curl", "The external tool to prepare commands for. Generates syntax for 'curl' by default.")

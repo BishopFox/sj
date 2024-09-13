@@ -8,9 +8,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type Result struct {
+	Method string `json:"method"`
+	Status int    `json:"status"`
+	Target string `json:"target"`
+}
+
+type VerboseResult struct {
+	Method  string `json:"method"`
+	Preview string `json:"preview"`
+	Status  int    `json:"status"`
+	Target  string `json:"target"`
+}
+
+var tempLogger *log.Logger
+
 func writeLog(sc int, target, method, errorMsg, response string) {
 	var file *os.File
-	tempLogger := log.New()
+	tempLogger = log.New()
 	tempResponsePreviewLength := responsePreviewLength
 
 	if len(response) < responsePreviewLength {
@@ -34,7 +49,7 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 			tempLogger.SetFormatter(&log.TextFormatter{DisableTimestamp: true})
 		}
 	} else {
-		tempLogger.SetFormatter(&log.JSONFormatter{DisableHTMLEscape: true, DisableTimestamp: true})
+		tempLogger.SetFormatter(&log.JSONFormatter{DisableHTMLEscape: true, DisableTimestamp: true, PrettyPrint: true})
 	}
 
 	if verbose {
@@ -49,6 +64,8 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 				logNotFound(sc, target, method, errorMsg, tempLogger)
 			} else if sc == 1 {
 				logDangerous(target, method, tempLogger)
+			} else if sc == 8899 {
+				logJSON(target, method)
 			} else {
 				logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
 			}
@@ -67,11 +84,17 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 				logNotFound(sc, target, method, errorMsg, tempLogger)
 			} else if sc == 1 {
 				logDangerous(target, method, tempLogger)
+			} else if sc == 8899 {
+				logJSON(target, method)
 			} else {
 				logManual(sc, target, method, errorMsg, tempLogger)
 			}
 		} else {
-			logAccessible(sc, target, method, tempLogger)
+			if sc == 8899 {
+				logJSON(target, method)
+			} else {
+				logAccessible(sc, target, method, tempLogger)
+			}
 		}
 	}
 	responsePreviewLength = tempResponsePreviewLength
@@ -192,4 +215,12 @@ func logVerboseUnauth(status int, target, method, errorMsg, response string, log
 		"Method":  method,
 		"Preview": response[:responsePreviewLength],
 	}).Error(errorMsg)
+}
+
+func logJSON(title, description string) {
+	tempLogger.WithFields(log.Fields{
+		"API Title":   title,
+		"Description": description,
+		"Results":     jsonResults,
+	}).Println("Done")
 }
