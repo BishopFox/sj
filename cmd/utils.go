@@ -317,7 +317,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 		}
 	}
 
-	if op.RequestBody != nil {
+	if op.RequestBody.Value != nil {
 		if op.RequestBody.Value.Content != nil {
 			for i := range op.RequestBody.Value.Content {
 				if contentType == "" {
