@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi2"
@@ -130,13 +131,33 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 		if strings.ToLower(outputFormat) == "json" {
 			writeLog(8899, s.Def.Info.Title, s.Def.Info.Description, "", "") // This is a temporary workaround to get the logging to work as intended.. needs to be fixed eventually.
 		} else if strings.ToLower(outputFormat) == "console" && !getAccessibleEndpoints {
+			var r []string
 			for i := range consoleResults {
-				st, _ := consoleResults[i][0].(int)
-				t, _ := consoleResults[i][1].(string)
-				m, _ := consoleResults[i][2].(string)
-				e, _ := consoleResults[i][3].(string)
-				r, _ := consoleResults[i][4].(string)
-				writeLog(st, t, m, e, r)
+				tempString := fmt.Sprintf("%s,%s,%d,%s,%s", consoleResults[i][1], consoleResults[i][2], consoleResults[i][0], consoleResults[i][3], consoleResults[i][4])
+				r = append(r, tempString)
+			}
+			sort.Strings(r)
+			for i := range r {
+				result := r[i]
+				i1 := strings.Index(r[i], ",")
+				endpoint := result[:i1]
+				result = result[i1+1:]
+
+				i2 := strings.Index(result, ",")
+				method := result[:i2]
+				result = result[i2+1:]
+
+				i3 := strings.Index(result, ",")
+				statusCode, _ := strconv.Atoi(result[:i3])
+				result = result[i3+1:]
+
+				i4 := strings.Index(result, ",")
+				errorMessage := result[:i4]
+				result = result[i4+1:]
+
+				responsePreview := result
+
+				writeLog(statusCode, endpoint, method, errorMessage, responsePreview)
 			}
 		}
 	}
