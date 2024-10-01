@@ -219,8 +219,8 @@ func logVerboseUnauth(status int, target, method, errorMsg, response string, log
 
 func logJSON(title, description string) {
 	tempLogger.WithFields(log.Fields{
-		"API Title":   title,
-		"Description": description,
-		"Results":     jsonResults,
+		"apiTitle":    title,
+		"description": description,
+		"results":     jsonResultArray,
 	}).Println("Done")
 }

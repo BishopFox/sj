@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,7 +38,8 @@ type SwaggerRequest struct {
 
 var accessibleEndpoints []string
 var consoleResults map[int][]any
-var jsonResults []string
+var jsonResultsStringArray []string
+var jsonResultArray []Result
 
 func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
@@ -107,7 +109,18 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 		s = s.IterateOverPaths(client)
 	}
 
-	sort.Strings(jsonResults)
+	slices.Sort(jsonResultsStringArray)
+	for r := range jsonResultsStringArray {
+
+		var result Result
+		err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &result)
+		if err != nil {
+			log.Fatal("Error marshalling JSON:", err)
+		}
+
+		jsonResultArray = append(jsonResultArray, result)
+	}
+
 	if os.Args[1] == "automate" {
 		if outfile == "" && getAccessibleEndpoints && strings.ToLower(outputFormat) == "console" {
 			var isDuplicateEndpoint bool
@@ -234,7 +247,11 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 					} else {
 						result, _ = json.Marshal(Result{Method: method, Status: sc, Target: s.URL.String()})
 					}
-					jsonResults = append(jsonResults, ","+string(result))
+					if jsonResultsStringArray == nil {
+						jsonResultsStringArray = append(jsonResultsStringArray, string(result))
+					} else {
+						jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
+					}
 				}
 			} else {
 				if verbose {
@@ -242,7 +259,7 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 				} else {
 					result, _ = json.Marshal(Result{Method: method, Status: sc, Target: s.URL.String()})
 				}
-				jsonResults = append(jsonResults, string(result))
+				jsonResultsStringArray = append(jsonResultsStringArray, string(result))
 			}
 		} else {
 			if !getAccessibleEndpoints {
