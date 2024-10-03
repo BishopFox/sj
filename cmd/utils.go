@@ -40,6 +40,7 @@ var accessibleEndpoints []string
 var consoleResults map[int][]any
 var jsonResultsStringArray []string
 var jsonResultArray []Result
+var jsonVerboseResultArray []VerboseResult
 
 func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 
@@ -113,12 +114,20 @@ func GenerateRequests(bodyBytes []byte, client http.Client) []string {
 	for r := range jsonResultsStringArray {
 
 		var result Result
-		err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &result)
-		if err != nil {
-			log.Fatal("Error marshalling JSON:", err)
+		var verboseResult VerboseResult
+		if verbose {
+			err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &verboseResult)
+			if err != nil {
+				log.Fatal("Error marshalling JSON:", err)
+			}
+			jsonVerboseResultArray = append(jsonVerboseResultArray, verboseResult)
+		} else {
+			err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &result)
+			if err != nil {
+				log.Fatal("Error marshalling JSON:", err)
+			}
+			jsonResultArray = append(jsonResultArray, result)
 		}
-
-		jsonResultArray = append(jsonResultArray, result)
 	}
 
 	if os.Args[1] == "automate" {

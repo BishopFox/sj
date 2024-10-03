@@ -65,7 +65,7 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 			} else if sc == 1 {
 				logDangerous(target, method, tempLogger)
 			} else if sc == 8899 {
-				logJSON(target, method)
+				logVerboseJSON(target, method)
 			} else {
 				logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
 			}
@@ -222,5 +222,13 @@ func logJSON(title, description string) {
 		"apiTitle":    title,
 		"description": description,
 		"results":     jsonResultArray,
+	}).Println("Done")
+}
+
+func logVerboseJSON(title, description string) {
+	tempLogger.WithFields(log.Fields{
+		"apiTitle":    title,
+		"description": description,
+		"results":     jsonVerboseResultArray,
 	}).Println("Done")
 }
