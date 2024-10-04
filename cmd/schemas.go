@@ -48,7 +48,9 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 							break
 						}
 					} else if location == "path" {
-						if schema.Value.Properties[property].Value.Type == "string" {
+						if schema.Value.Properties[property].Value.Example != "" {
+							s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", schema.Value.Properties[property].Value.Example.(string))
+						} else if schema.Value.Properties[property].Value.Type == "string" {
 							if strings.Contains(s.URL.Path, param.Value.Name) {
 								s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", "test")
 							} else {
@@ -62,13 +64,17 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 							}
 						}
 					} else if location == "query" {
-						if schema.Value.Properties[property].Value.Type == "string" {
+						if schema.Value.Properties[property].Value.Example != "" {
+							s.Query.Add(param.Value.Name, (schema.Value.Properties[property].Value.Example).(string))
+						} else if schema.Value.Properties[property].Value.Type == "string" {
 							s.Query.Add(param.Value.Name, "test")
 						} else {
 							s.Query.Add(param.Value.Name, "1")
 						}
 					} else if location == "body" {
-						if schema.Value.Properties[property].Value.Type == "string" {
+						if schema.Value.Properties[property].Value.Example != "" {
+							s.Body[param.Value.Name] = schema.Value.Properties[property].Value.Example
+						} else if schema.Value.Properties[property].Value.Type == "string" {
 							s.Body[param.Value.Name] = "test"
 						} else {
 							s.Body[param.Value.Name] = 1
@@ -86,6 +92,29 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 					value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
 					s.Body[param.Value.Name] = value
 				}
+			} else if schema.Value.AllOf != nil {
+				for i := range schema.Value.AllOf {
+					if schema.Value.AllOf[i].Ref != "" {
+						if counter < 3 {
+							s = s.SetParametersFromSchema(param, location, schema.Value.AllOf[i].Ref, req, counter+1)
+						} else {
+							log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+							break
+						}
+					}
+				}
+			} else if schema.Value.OneOf != nil && schema.Value.OneOf[0].Ref != "" {
+				if counter < 3 {
+					s = s.SetParametersFromSchema(param, location, schema.Value.OneOf[0].Ref, req, counter+1)
+				} else {
+					log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+				}
+			} else if schema.Value.AnyOf != nil && schema.Value.AnyOf[0].Ref != "" {
+				if counter < 3 {
+					s = s.SetParametersFromSchema(param, location, schema.Value.AnyOf[0].Ref, req, counter+1)
+				} else {
+					log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+				}
 			}
 		}
 	} else {
@@ -102,7 +131,9 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 							break
 						}
 					} else {
-						if schema.Value.Properties[property].Value.Type == "string" {
+						if schema.Value.Properties[property].Value.Example != "" {
+							s.Body[property] = schema.Value.Properties[property].Value.Example
+						} else if schema.Value.Properties[property].Value.Type == "string" {
 							s.Body[property] = "test"
 						} else {
 							s.Body[property] = 1
@@ -112,6 +143,31 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 			} else if schema.Value.Enum != nil {
 				value := schema.Value.Enum[rand.Intn(len(schema.Value.Enum))]
 				s.Body[name] = value
+			} else {
+				if schema.Value.AllOf != nil {
+					for i := range schema.Value.AllOf {
+						if schema.Value.AllOf[i].Ref != "" {
+							if counter < 3 {
+								s = s.SetParametersFromSchema(param, location, schema.Value.AllOf[i].Ref, req, counter+1)
+							} else {
+								log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+								break
+							}
+						}
+					}
+				} else if schema.Value.OneOf != nil && schema.Value.OneOf[0].Ref != "" {
+					if counter < 3 {
+						s = s.SetParametersFromSchema(param, location, schema.Value.OneOf[0].Ref, req, counter+1)
+					} else {
+						log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+					}
+				} else if schema.Value.AnyOf != nil && schema.Value.AnyOf[0].Ref != "" {
+					if counter < 3 {
+						s = s.SetParametersFromSchema(param, location, schema.Value.AnyOf[0].Ref, req, counter+1)
+					} else {
+						log.Warnf("Nested reference encountered for %s. Test this endpoint manually.\n", s.URL.Scheme+"://"+s.URL.Host+s.URL.Path)
+					}
+				}
 			}
 		}
 	}
