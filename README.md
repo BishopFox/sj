@@ -13,7 +13,7 @@ It does this by parsing the definition file for paths, parameters, and accepted 
 
 ## Build
 
-To compile from source, ensure you have Go version `>= 1.20` installed and run `go build` from within the repository:
+To compile from source, ensure you have Go version `>= 1.21` installed and run `go build` from within the repository:
 
 ```bash
 $ git clone https://github.com/BishopFox/sj.git
