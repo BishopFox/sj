@@ -48,7 +48,7 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 							break
 						}
 					} else if location == "path" {
-						if schema.Value.Properties[property].Value.Example != "" {
+						if schema.Value.Properties[property].Value.Example != "" && schema.Value.Properties[property].Value.Example != nil {
 							s.URL.Path = strings.ReplaceAll(s.URL.Path, "{"+param.Value.Name+"}", schema.Value.Properties[property].Value.Example.(string))
 						} else if schema.Value.Properties[property].Value.Type == "string" {
 							if strings.Contains(s.URL.Path, param.Value.Name) {
@@ -64,7 +64,7 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 							}
 						}
 					} else if location == "query" {
-						if schema.Value.Properties[property].Value.Example != "" {
+						if schema.Value.Properties[property].Value.Example != "" && schema.Value.Properties[property].Value.Example != nil {
 							s.Query.Add(param.Value.Name, (schema.Value.Properties[property].Value.Example).(string))
 						} else if schema.Value.Properties[property].Value.Type == "string" {
 							s.Query.Add(param.Value.Name, "test")
@@ -72,7 +72,7 @@ func (s SwaggerRequest) SetParametersFromSchema(param *openapi3.ParameterRef, lo
 							s.Query.Add(param.Value.Name, "1")
 						}
 					} else if location == "body" {
-						if schema.Value.Properties[property].Value.Example != "" {
+						if schema.Value.Properties[property].Value.Example != "" && schema.Value.Properties[property].Value.Example != nil {
 							s.Body[param.Value.Name] = schema.Value.Properties[property].Value.Example
 						} else if schema.Value.Properties[property].Value.Type == "string" {
 							s.Body[param.Value.Name] = "test"
