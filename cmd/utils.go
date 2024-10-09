@@ -345,7 +345,7 @@ func (s SwaggerRequest) AddParametersToRequest(op *openapi3.Operation) SwaggerRe
 
 		} else if param.Value.In == "header" && param.Value.Required && strings.ToLower(param.Value.Name) != "content-type" {
 			Headers = append(Headers, fmt.Sprintf("%s: %s", param.Value.Name, "1"))
-		} else if param.Value.In == "body" {
+		} else if param.Value.In == "body" || param.Value.In == "formData" {
 			if param.Value.Schema.Ref != "" {
 				s = s.SetParametersFromSchema(param, "body", param.Value.Schema.Ref, nil, 0)
 			}
