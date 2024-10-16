@@ -55,7 +55,8 @@ var convertCmd = &cobra.Command{
 		}
 
 		if strings.HasPrefix(doc3.OpenAPI, "3") {
-			log.Fatal("Definition file is already version 3.")
+			log.Warnln("Definition file is already version 3.")
+			WriteConvertedDefinitionFile(bodyBytes)
 		} else if strings.HasPrefix(doc.Swagger, "2") {
 			newDoc, err := openapi2conv.ToV3(&doc)
 			if err != nil {
