@@ -39,32 +39,50 @@ $ export PATH=$PATH:~/go/bin
 ```bash
 $ sj automate -u https://petstore.swagger.io/v2/swagger.json -q
 
-INFO[0000] Gathering API details.
+INFO[0000] Gathering API details.                       
+INFO[0000] Sending requests at a rate of 15 requests per second. 
 
 Title: Swagger Petstore
 Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
 
-INFO[0000] Available authentication mechanisms:
-    - api_key
-    - petstore_auth
+WARN[0000] Results for https://petstore.swagger.io/v2:  
 
-INFO[0000] Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/pet/findByTags?tags=1"
-INFO[0000] Endpoint accessible!                          Method=POST Status=200 Target="https://petstore.swagger.io/v2/store/order"
-WARN[0000] Manual testing may be required.               Method=POST Status=500 Target="https://petstore.swagger.io/v2/user/createWithList"
-INFO[0000] Endpoint accessible!                          Method=POST Status=200 Target="https://petstore.swagger.io/v2/user"
-ERRO[0000] User not found                                Method=GET Status=404 Target="https://petstore.swagger.io/v2/user/test"
-WARN[0000] Manual testing may be required.               Method=PUT Status=415 Target="https://petstore.swagger.io/v2/user/test"
-INFO[0000] Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/user/login?password=test&username=test"
-WARN[0000] Manual testing may be required.               Method=POST Status=500 Target="https://petstore.swagger.io/v2/user/createWithArray"
-INFO[0000] Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/user/logout"
-WARN[0000] Manual testing may be required.               Method=POST Status=415 Target="https://petstore.swagger.io/v2/pet/test"
-ERRO[0000] Pet not found                                 Method=GET Status=404 Target="https://petstore.swagger.io/v2/pet/test"
-WARN[0000] Manual testing may be required.               Method=POST Status=415 Target="https://petstore.swagger.io/v2/pet/test/uploadImage"
-ERRO[0000] Order not found                               Method=GET Status=404 Target="https://petstore.swagger.io/v2/store/order/test"
-INFO[0000] Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/store/inventory"
-INFO[0000] Endpoint accessible!                          Method=POST Status=200 Target="https://petstore.swagger.io/v2/pet"
-WARN[0000] Manual testing may be required.               Method=PUT Status=415 Target="https://petstore.swagger.io/v2/pet"
-INFO[0001] Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/pet/findByStatus?status=1"
+WARN[0007] Results for http://petstore.swagger.io/v2:   
+
+WARN Manual testing may be required.               Method=POST Status=400 Target=http://petstore.swagger.io/v2/pet
+WARN Invalid ID supplied                           Method=PUT Status=400 Target=http://petstore.swagger.io/v2/pet
+ERRO Pet not found                                 Method=GET Status=404 Target=http://petstore.swagger.io/v2/pet/%7BpetId%7D
+WARN Manual testing may be required.               Method=POST Status=415 Target=http://petstore.swagger.io/v2/pet/%7BpetId%7D
+WARN Bad request (could not reach the target).     Method=POST Status=N/A Target="http://petstore.swagger.io/v2/pet/%7BpetId%7D/uploadImage"
+INFO Endpoint accessible!                          Method=GET Status=200 Target="http://petstore.swagger.io/v2/pet/findByStatus"
+INFO Endpoint accessible!                          Method=GET Status=200 Target="http://petstore.swagger.io/v2/pet/findByTags"
+INFO Endpoint accessible!                          Method=GET Status=200 Target=http://petstore.swagger.io/v2/store/inventory
+WARN Invalid Order                                 Method=POST Status=400 Target=http://petstore.swagger.io/v2/store/order
+WARN Bad request (could not reach the target).     Method=GET Status=N/A Target="http://petstore.swagger.io/v2/store/order/%7BorderId%7D"
+WARN Manual testing may be required.               Method=POST Status=400 Target=http://petstore.swagger.io/v2/user
+ERRO User not found                                Method=GET Status=404 Target=http://petstore.swagger.io/v2/user/%7Busername%7D
+WARN Invalid user supplied                         Method=PUT Status=400 Target=http://petstore.swagger.io/v2/user/%7Busername%7D
+WARN Manual testing may be required.               Method=POST Status=400 Target=http://petstore.swagger.io/v2/user/createWithArray
+WARN Manual testing may be required.               Method=POST Status=400 Target=http://petstore.swagger.io/v2/user/createWithList
+INFO Endpoint accessible!                          Method=GET Status=200 Target=http://petstore.swagger.io/v2/user/login
+INFO Endpoint accessible!                          Method=GET Status=200 Target=http://petstore.swagger.io/v2/user/logout
+WARN Manual testing may be required.               Method=POST Status=400 Target=https://petstore.swagger.io/v2/pet
+WARN Invalid ID supplied                           Method=PUT Status=400 Target=https://petstore.swagger.io/v2/pet
+ERRO Pet not found                                 Method=GET Status=404 Target=https://petstore.swagger.io/v2/pet/%7BpetId%7D
+WARN Manual testing may be required.               Method=POST Status=415 Target=https://petstore.swagger.io/v2/pet/%7BpetId%7D
+WARN Manual testing may be required.               Method=POST Status=415 Target=https://petstore.swagger.io/v2/pet/%7BpetId%7D/uploadImage
+INFO Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/pet/findByStatus"
+INFO Endpoint accessible!                          Method=GET Status=200 Target="https://petstore.swagger.io/v2/pet/findByTags"
+INFO Endpoint accessible!                          Method=GET Status=200 Target=https://petstore.swagger.io/v2/store/inventory
+WARN Invalid Order                                 Method=POST Status=400 Target=https://petstore.swagger.io/v2/store/order
+ERRO Order not found                               Method=GET Status=404 Target=https://petstore.swagger.io/v2/store/order/%7BorderId%7D
+WARN Manual testing may be required.               Method=POST Status=400 Target=https://petstore.swagger.io/v2/user
+ERRO User not found                                Method=GET Status=404 Target=https://petstore.swagger.io/v2/user/%7Busername%7D
+WARN Invalid user supplied                         Method=PUT Status=400 Target=https://petstore.swagger.io/v2/user/%7Busername%7D
+WARN Manual testing may be required.               Method=POST Status=400 Target=https://petstore.swagger.io/v2/user/createWithArray
+WARN Manual testing may be required.               Method=POST Status=400 Target=https://petstore.swagger.io/v2/user/createWithList
+INFO Endpoint accessible!                          Method=GET Status=200 Target=https://petstore.swagger.io/v2/user/login
+INFO Endpoint accessible!                          Method=GET Status=200 Target=https://petstore.swagger.io/v2/user/logout
 ```
 
 > Use the `prepare` command to prepare a list of commands for manual testing. Currently supports both `curl` and `sqlmap`. You will likely have to modify these slightly.
@@ -73,31 +91,46 @@ INFO[0001] Endpoint accessible!                          Method=GET Status=200 T
 $ sj prepare -u https://petstore.swagger.io/v2/swagger.json -q
 
 INFO[0000] Gathering API details.
+                      
 
 Title: Swagger Petstore
 Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
 
-INFO[0000] Available authentication mechanisms:
-    - api_key
-    - petstore_auth
+curl -sk -X POST 'https://petstore.swagger.io/v2/user/createWithArray' -H 'Content-Type: application/json'
+curl -sk -X POST 'https://petstore.swagger.io/v2/store/order' -d '{"complete":false,"id":1,"petId":1,"quantity":1,"shipDate":"test","status":"test"}' -H 'Content-Type: application/json'
+curl -sk -X GET 'https://petstore.swagger.io/v2/store/inventory' -H 'Content-Type: application/json'
+curl -sk -X GET 'https://petstore.swagger.io/v2/user/login' -H 'Content-Type: application/json'
+curl -sk -X POST 'https://petstore.swagger.io/v2/pet/%7BpetId%7D' -d 'name=test&status=test' -H 'Content-Type: application/x-www-form-urlencoded'
+curl -sk -X GET 'https://petstore.swagger.io/v2/pet/%7BpetId%7D' -H 'Content-Type: application/x-www-form-urlencoded'
+curl -sk -X POST 'https://petstore.swagger.io/v2/pet' -d '<root><photoUrls>unknown_type_populate_manually</photoUrls><tags>unknown_type_populate_manually</tags><status>test</status><id></id><name>test</name></root>' -H 'Content-Type: application/xml'
+curl -sk -X PUT 'https://petstore.swagger.io/v2/pet' -d '{"id":null,"name":"test","photoUrls":"unknown_type_populate_manually","status":"test","tags":"unknown_type_populate_manually"}' -H 'Content-Type: application/json'
+curl -sk -X POST 'https://petstore.swagger.io/v2/user/createWithList' -H 'Content-Type: application/json'
+curl -sk -X GET 'https://petstore.swagger.io/v2/user/%7Busername%7D' -H 'Content-Type: application/json'
+curl -sk -X PUT 'https://petstore.swagger.io/v2/user/%7Busername%7D' -d '{"email":"test","firstName":"test","id":1,"lastName":"test","password":"test","phone":"test","userStatus":1,"username":"test"}' -H 'Content-Type: application/json'
+curl -sk -X GET 'https://petstore.swagger.io/v2/pet/findByTags' -H 'Content-Type: application/json'
+curl -sk -X POST 'https://petstore.swagger.io/v2/pet/%7BpetId%7D/uploadImage' -d 'test=test' -H 'Content-Type: multipart/form-data'
+curl -sk -X GET 'https://petstore.swagger.io/v2/store/order/%7BorderId%7D' -H 'Content-Type: multipart/form-data'
+curl -sk -X GET 'https://petstore.swagger.io/v2/user/logout' -H 'Content-Type: multipart/form-data'
+curl -sk -X POST 'https://petstore.swagger.io/v2/user' -d '{"email":"test","firstName":"test","id":1,"lastName":"test","password":"test","phone":"test","userStatus":1,"username":"test"}' -H 'Content-Type: application/json'
+curl -sk -X GET 'https://petstore.swagger.io/v2/pet/findByStatus' -H 'Content-Type: application/json'
 
-curl -sk -X PUT 'https://petstore.swagger.io/v2/user/test' -d '{"test":"test"}'
-curl -sk -X GET 'https://petstore.swagger.io/v2/user/test'
-curl -sk -X GET 'https://petstore.swagger.io/v2/pet/test'
-curl -sk -X POST 'https://petstore.swagger.io/v2/pet/test' -d '{"test":"test"}'
-curl -sk -X POST 'https://petstore.swagger.io/v2/store/order' -d '{"test":"test"}'
-curl -sk -X POST 'https://petstore.swagger.io/v2/pet' -d '{"test":"test"}'
-curl -sk -X PUT 'https://petstore.swagger.io/v2/pet' -d '{"test":"test"}'
-curl -sk -X GET 'https://petstore.swagger.io/v2/store/order/test'
-curl -sk -X GET 'https://petstore.swagger.io/v2/pet/findByTags?tags=1'
-curl -sk -X POST 'https://petstore.swagger.io/v2/user/createWithList' -d '{"test":"test"}'
-curl -sk -X POST 'https://petstore.swagger.io/v2/user' -d '{"test":"test"}'
-curl -sk -X GET 'https://petstore.swagger.io/v2/user/logout'
-curl -sk -X GET 'https://petstore.swagger.io/v2/user/login?password=test&username=test'
-curl -sk -X POST 'https://petstore.swagger.io/v2/pet/test/uploadImage' -d '{"test":"test"}'
-curl -sk -X GET 'https://petstore.swagger.io/v2/pet/findByStatus?status=1'
-curl -sk -X GET 'https://petstore.swagger.io/v2/store/inventory'
-curl -sk -X POST 'https://petstore.swagger.io/v2/user/createWithArray' -d '{"test":"test"}'
+curl -sk -X GET 'http://petstore.swagger.io/v2/user/logout' -H 'Content-Type: application/json'
+curl -sk -X POST 'http://petstore.swagger.io/v2/user' -d '{"email":"test","firstName":"test","id":1,"lastName":"test","password":"test","phone":"test","userStatus":1,"username":"test"}' -H 'Content-Type: application/json'
+curl -sk -X GET 'http://petstore.swagger.io/v2/pet/findByStatus' -H 'Content-Type: application/json'
+curl -sk -X POST 'http://petstore.swagger.io/v2/user/createWithArray' -H 'Content-Type: application/json'
+curl -sk -X POST 'http://petstore.swagger.io/v2/store/order' -d '{"complete":false,"id":1,"petId":1,"quantity":1,"shipDate":"test","status":"test"}' -H 'Content-Type: application/json'
+curl -sk -X GET 'http://petstore.swagger.io/v2/store/inventory' -H 'Content-Type: application/json'
+curl -sk -X GET 'http://petstore.swagger.io/v2/user/login' -H 'Content-Type: application/json'
+curl -sk -X GET 'http://petstore.swagger.io/v2/pet/%7BpetId%7D' -H 'Content-Type: application/json'
+curl -sk -X POST 'http://petstore.swagger.io/v2/pet/%7BpetId%7D' -d 'name=test&status=test' -H 'Content-Type: application/x-www-form-urlencoded'
+curl -sk -X POST 'http://petstore.swagger.io/v2/pet' -d '<root><photoUrls>unknown_type_populate_manually</photoUrls><tags>unknown_type_populate_manually</tags><status>test</status><id>1</id><name>test</name></root>' -H 'Content-Type: application/xml'
+curl -sk -X PUT 'http://petstore.swagger.io/v2/pet' -d '{"id":null,"name":"test","photoUrls":"unknown_type_populate_manually","status":"test","tags":"unknown_type_populate_manually"}' -H 'Content-Type: application/json'
+curl -sk -X POST 'http://petstore.swagger.io/v2/user/createWithList' -H 'Content-Type: application/json'
+curl -sk -X PUT 'http://petstore.swagger.io/v2/user/%7Busername%7D' -d '{"email":"test","firstName":"test","id":1,"lastName":"test","password":"test","phone":"test","userStatus":1,"username":"test"}' -H 'Content-Type: application/json'
+curl -sk -X GET 'http://petstore.swagger.io/v2/user/%7Busername%7D' -H 'Content-Type: application/json'
+curl -sk -X GET 'http://petstore.swagger.io/v2/pet/findByTags' -H 'Content-Type: application/json'
+curl -sk -X POST 'http://petstore.swagger.io/v2/pet/%7BpetId%7D/uploadImage' -d 'test=test' -H 'Content-Type: multipart/form-data'
+curl -sk -X GET 'http://petstore.swagger.io/v2/store/order/%7BorderId%7D' -H 'Content-Type: multipart/form-data'
 ```
 
 > Use the `endpoints` command to generate a list of raw endpoints from the provided definition file.
@@ -126,10 +159,10 @@ INFO[0000] Gathering endpoints.
 > Use the `brute` command to send a series of requests in an attempt to find a definition file on the target.
 
 ```bash
-$ sj brute -u https://petstore.swagger.io/v2/swagger.json
-INFO[0000] Sending 2045 requests. This could take a while...
-Request: 343
-INFO[0015] Definition file found: https://petstore.swagger.io/v2/swagger
+$ sj brute -u https://petstore.swagger.io
+INFO[0000] Sending 2173 requests at a rate of 15 requests per second. This could take a while... 
+Request: 1294
+INFO[0090] Definition file found: https://petstore.swagger.io/v2/swagger.json 
 {"...SNIP..."}
 ```
 
@@ -184,7 +217,7 @@ Available Commands:
   prepare     Prepares a set of commands for manual testing of each endpoint.
 
 Flags:
-  -a, --agent string            Set the User-Agent string. (default "Swagger Jacker (github.com/BishopFox/sj)")
+  -A, --agent string            Set the User-Agent string. (default "Swagger Jacker (github.com/BishopFox/sj)")
   -b, --base-path string        Set the API base path if not defined in the definition file (i.e. /V2/).
   -f, --format string           Declare the format of the definition file (json/yaml/yml/js). (default "json")
   -H, --headers stringArray     Add custom headers, separated by a colon ("Name: Value"). Multiple flags are accepted.
@@ -194,7 +227,8 @@ Flags:
   -o, --outfile string          Output the results to a file. Only supported for the 'automate' and 'brute' commands at this time.
   -p, --proxy string            Proxy host and port. Example: http://127.0.0.1:8080 (default "NOPROXY")
   -q, --quiet                   Do not prompt for user input - uses default values for all requests.
-  -r, --randomize-user-agent    Randomizes the user agent string. Default is 'false'.
+      --randomize-user-agent    Randomizes the user agent string. Default is 'false'.
+  -r, --rate int                Limit the number of requests per second. (default 15)
   -s, --safe-word stringArray   Avoids 'dangerous word' check for the specified word(s). Multiple flags are accepted.
   -T, --target string           Manually set a target for the requests to be made if separate from the host the documentation resides on.
   -t, --timeout int             Set the request timeout period. (default 30)
