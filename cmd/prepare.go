@@ -16,6 +16,13 @@ var prepareCmd = &cobra.Command{
 	Long: `The prepare command prepares a set of commands for manual testing of each endpoint.
 This enables you to test specific API functions for common vulnerabilities or misconfigurations.`,
 	Run: func(cmd *cobra.Command, args []string) {
+
+		if randomUserAgent {
+			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+			}
+		}
+
 		client := CheckAndConfigureProxy()
 
 		fmt.Printf("\n")

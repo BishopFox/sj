@@ -24,6 +24,12 @@ var convertCmd = &cobra.Command{
 
 		var bodyBytes []byte
 
+		if randomUserAgent {
+			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+			}
+		}
+
 		client := CheckAndConfigureProxy()
 
 		if strings.ToLower(outputFormat) != "json" {

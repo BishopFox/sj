@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -12,11 +13,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi2"
 	"github.com/getkin/kin-openapi/openapi2conv"
 	"github.com/getkin/kin-openapi/openapi3"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -199,12 +202,20 @@ func (s SwaggerRequest) IterateOverPaths(client http.Client) SwaggerRequest {
 			"TRACE":   pathItem.Trace,
 		}
 
+		var rateLimiter = rate.NewLimiter(rate.Every(time.Second/(time.Duration(rateLimit))), 1)
+
 		for method, op := range operations {
 			// Do all the things here :D
 			s.BodyData = nil
-			if op != nil {
-				s.URL.Path = s.Path + path
-				s = s.BuildDefinedRequests(client, method, pathItem, op)
+			if rateLimit > 0 {
+				if err := rateLimiter.Wait(context.Background()); err != nil {
+					fmt.Println("Rate limit error...")
+				} else {
+					if op != nil {
+						s.URL.Path = s.Path + path
+						s = s.BuildDefinedRequests(client, method, pathItem, op)
+					}
+				}
 			}
 		}
 	}
@@ -524,7 +535,10 @@ func (s SwaggerRequest) GetBasePath() string {
 			}
 
 		}
-
+		bp, _ := s.Def.Servers.BasePath()
+		if bp != "" {
+			basePath = bp
+		}
 	}
 	basePath = strings.TrimSuffix(basePath, "/")
 	return basePath

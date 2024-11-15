@@ -111,13 +111,9 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 
 	// User-Agent handling
 	if randomUserAgent {
-		if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
-			log.Fatalf("Cannot set a User Agent while supplying the 'random-user-agent' flag.")
-		} else {
-			rand.New(rand.NewSource(time.Now().UnixNano()))
-			UserAgent = userAgents[rand.Intn(len(userAgents))]
-			req.Header.Set("User-Agent", UserAgent)
-		}
+		rand.New(rand.NewSource(time.Now().UnixNano()))
+		UserAgent = userAgents[rand.Intn(len(userAgents))]
+		req.Header.Set("User-Agent", UserAgent)
 	} else if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
 		req.Header.Set("User-Agent", UserAgent)
 	}
@@ -176,6 +172,15 @@ func CheckContentType(client http.Client, target string) string {
 	req, err := http.NewRequest("GET", target, nil)
 	if err != nil && err != context.Canceled && err != io.EOF {
 		log.Fatal("Error: could not create HTTP request - ", err)
+	}
+
+	// User-Agent handling
+	if randomUserAgent {
+		rand.New(rand.NewSource(time.Now().UnixNano()))
+		UserAgent = userAgents[rand.Intn(len(userAgents))]
+		req.Header.Set("User-Agent", UserAgent)
+	} else if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+		req.Header.Set("User-Agent", UserAgent)
 	}
 
 	resp, err := client.Do(req.WithContext(ctx))

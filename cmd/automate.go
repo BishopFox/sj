@@ -23,12 +23,21 @@ var automateCmd = &cobra.Command{
 This enables the user to get a quick look at which endpoints require authentication and which ones do not. If a request
 responds in an abnormal way, manual testing should be conducted (prepare manual tests using the "prepare" command).`,
 	Run: func(cmd *cobra.Command, args []string) {
-
 		if outfile != "" && strings.ToLower(outputFormat) != "" {
 			if !strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) != "json" {
 				log.Fatal("Only the JSON output format is supported at the moment.")
 			} else if strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) == "console" {
 				outputFormat = "json"
+			}
+		}
+
+		if rateLimit <= 0 {
+			log.Fatal("Invalid rate supplied. Must be a positive number")
+		}
+
+		if randomUserAgent {
+			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
 		}
 
@@ -38,7 +47,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 		if strings.ToLower(outputFormat) != "json" {
 			fmt.Printf("\n")
-			log.Infof("Gathering API details.\n\n")
+			log.Infof("Gathering API details.\n")
 		}
 
 		if swaggerURL != "" {
@@ -50,6 +59,9 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			}
 
 			bodyBytes, _ = io.ReadAll(specFile)
+		}
+		if rateLimit > 0 {
+			log.Info("Sending requests at a rate of ", rateLimit, " requests per second.")
 		}
 		GenerateRequests(bodyBytes, client)
 	},

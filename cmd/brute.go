@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,9 +11,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/spf13/cobra"
+	"golang.org/x/time/rate"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -28,6 +31,16 @@ var bruteCmd = &cobra.Command{
 	Short: "Sends a series of automated requests to discover hidden API operation definitions.",
 	Long:  `The brute command sends requests to the target to find operation definitions based on commonly used file locations.`,
 	Run: func(cmd *cobra.Command, args []string) {
+
+		if rateLimit <= 0 {
+			log.Fatal("Invalid rate supplied. Must be a positive number")
+		}
+
+		if randomUserAgent {
+			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+			}
+		}
 
 		client := CheckAndConfigureProxy()
 
@@ -60,7 +73,11 @@ var bruteCmd = &cobra.Command{
 				log.Fatalf("failed to read words from file: %s", err)
 			}
 		}
-		log.Infof("Sending %d requests. This could take a while...\n", len(allURLs))
+		if rateLimit > 0 {
+			log.Infof("Sending %d requests at a rate of %d requests per second. This could take a while...\n", len(allURLs), rateLimit)
+		} else {
+			log.Infof("Sending %d requests. This could take a while...\n", len(allURLs))
+		}
 
 		specFound, definitionFile := findDefinitionFile(allURLs, client)
 		if specFound {
@@ -111,39 +128,46 @@ func makeURLs(target string, endpoints []string, fileExtension string) []string 
 }
 
 func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
+	var rateLimiter = rate.NewLimiter(rate.Every(time.Second/(time.Duration(rateLimit))), 1)
+
 	for i, url := range urls {
-		ct := CheckContentType(client, url)
-		if strings.Contains(ct, "application/json") {
-			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
-			if bodyBytes != nil {
-				checkSpec := UnmarshalSpec(bodyBytes)
-				if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
-					fmt.Println("")
-					log.Infof("Definition file found: %s\n", url)
-					return true, checkSpec
-				}
-			}
-		} else if strings.Contains(ct, "application/javascript") {
-			bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil)
-			if bodyBytes != nil {
-				regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
-				matches := regexPattern.FindAllStringSubmatch(bodyString, -1)
-				for _, match := range matches {
-					jsonContent := match[2]
-					checkSpec := UnmarshalSpec([]byte(jsonContent))
-					if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
-						log.Infof("\nFound operation definitions embedded in JavaScript file at %s\n", url)
-						return true, checkSpec
+		if rateLimit > 0 {
+			if err := rateLimiter.Wait(context.Background()); err != nil {
+				fmt.Println("Rate limit error...")
+			} else {
+				ct := CheckContentType(client, url)
+				if strings.Contains(ct, "application/json") {
+					bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
+					if bodyBytes != nil {
+						checkSpec := UnmarshalSpec(bodyBytes)
+						if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
+							fmt.Println("")
+							log.Infof("Definition file found: %s\n", url)
+							return true, checkSpec
+						}
+					}
+				} else if strings.Contains(ct, "application/javascript") {
+					bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil)
+					if bodyBytes != nil {
+						regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
+						matches := regexPattern.FindAllStringSubmatch(bodyString, -1)
+						for _, match := range matches {
+							jsonContent := match[2]
+							checkSpec := UnmarshalSpec([]byte(jsonContent))
+							if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
+								log.Infof("\nFound operation definitions embedded in JavaScript file at %s\n", url)
+								return true, checkSpec
+							}
+						}
 					}
 				}
+				if i == len(urls) {
+					fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
+				} else {
+					fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
+				}
 			}
 		}
-		if i == len(urls) {
-			fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
-		} else {
-			fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
-		}
-
 	}
 	return false, nil
 }
