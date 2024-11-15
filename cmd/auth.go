@@ -23,6 +23,13 @@ var (
 
 func CheckSecDefs(doc3 openapi3.T) (apiInQuery bool, apiKey string, apiKeyName string) {
 
+    	if doc3.Components == nil || doc3.Components.SecuritySchemes == nil || len(doc3.Components.SecuritySchemes) == 0 {
+	        if !quiet {
+            		log.Warn("No security schemes defined in the OpenAPI specification.")
+        	}
+        	return false, "", ""
+    	}
+	
 	if outputFormat == "json" && !quiet {
 		if len(doc3.Components.SecuritySchemes) != 0 {
 			log.Warnf("The following authentication mechanisms are supported. If necessary, supply these manually when using the JSON output format:\n")
