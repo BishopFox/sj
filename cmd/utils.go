@@ -259,11 +259,18 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 			accessibleEndpoints = append(accessibleEndpoints, s.URL.String())
 		}
 		if strings.ToLower(outputFormat) != "console" {
+			curlCommand := fmt.Sprintf("curl -X %s -sk %s", method, s.URL.String())
+			if s.BodyData != nil {
+				curlCommand = fmt.Sprintf("%s -d '%s'", curlCommand, string(s.BodyData))
+			}
+			if len(Headers) != 0 {
+				curlCommand = fmt.Sprintf("%s -H '%s'", curlCommand, strings.Join(Headers, "' -H '"))
+			}
 			var result []byte
 			if getAccessibleEndpoints {
 				if sc == 200 {
 					if verbose {
-						result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: s.URL.String()})
+						result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: s.URL.String(), Curl: curlCommand})
 					} else {
 						result, _ = json.Marshal(Result{Method: method, Status: sc, Target: s.URL.String()})
 					}
@@ -275,7 +282,7 @@ func (s SwaggerRequest) BuildDefinedRequests(client http.Client, method string, 
 				}
 			} else {
 				if verbose {
-					result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: s.URL.String()})
+					result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: s.URL.String(), Curl: curlCommand})
 				} else {
 					result, _ = json.Marshal(Result{Method: method, Status: sc, Target: s.URL.String()})
 				}
