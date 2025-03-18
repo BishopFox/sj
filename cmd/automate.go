@@ -60,7 +60,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 			bodyBytes, _ = io.ReadAll(specFile)
 		}
-		if rateLimit > 0 {
+		if rateLimit > 0 && strings.ToLower(outputFormat) != "json" {
 			log.Info("Sending requests at a rate of ", rateLimit, " requests per second.")
 		}
 		GenerateRequests(bodyBytes, client)
