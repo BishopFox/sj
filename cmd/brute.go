@@ -73,7 +73,7 @@ var bruteCmd = &cobra.Command{
 				log.Fatalf("failed to read words from file: %s", err)
 			}
 		}
-		if rateLimit > 0 {
+		if rateLimit > 0 && strings.ToLower(outputFormat) != "json" {
 			log.Infof("Sending %d requests at a rate of %d requests per second. This could take a while...\n", len(allURLs), rateLimit)
 		} else {
 			log.Infof("Sending %d requests. This could take a while...\n", len(allURLs))
