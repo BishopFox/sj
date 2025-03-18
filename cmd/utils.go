@@ -679,22 +679,16 @@ func ExtractSpecFromJS(bodyBytes []byte) []byte {
 
 func EnforceSingleContentType(newContentType string) {
 	newContentType = strings.TrimSpace(newContentType)
-	if Headers != nil {
-		headerString := strings.Join(Headers, ",")
-		Headers = nil
-		ctIndex := strings.Index(strings.ToLower(headerString), "content-type:") + 14
-		headerString = headerString[ctIndex:]
-		if strings.Contains(headerString, ",") {
-			headerString = strings.TrimPrefix(headerString, ",")
-			ctEndIndex := strings.Index(headerString[ctIndex:], ",") + 1
-			headerString = headerString[:ctEndIndex]
-		} else if !strings.Contains(headerString, ":") {
-			headerString = ""
-		}
-		if headerString != "" {
-			Headers = append(Headers, strings.Split(headerString, ",")...)
-		}
-	}
+
+	// Remove old 'Content-Type' header
+	slices.DeleteFunc(Headers, func(h string) bool {
+		return strings.HasPrefix(strings.ToLower(h), "content-type:")
+	})
 
 	Headers = append(Headers, "Content-Type: "+newContentType)
+
+	// Remove empty elements to avoid repetitions of "-H ''"
+	Headers = slices.DeleteFunc(Headers, func(h string) bool {
+		return strings.TrimSpace(h) == ""
+	})
 }
