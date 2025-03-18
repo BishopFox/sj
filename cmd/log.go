@@ -19,6 +19,7 @@ type VerboseResult struct {
 	Preview string `json:"preview"`
 	Status  int    `json:"status"`
 	Target  string `json:"target"`
+	Curl    string `json:"curl"`
 }
 
 var tempLogger *log.Logger
