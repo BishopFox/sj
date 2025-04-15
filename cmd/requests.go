@@ -92,20 +92,27 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	}
 
 	for i := range Headers {
-		h := strings.Split(Headers[i], ":")
-		if len(h) == 2 {
-			if h[0] == "User-Agent" {
-				UserAgent = h[1]
-			}
-			if h[0] == "Content-Type" {
-				contentType = h[1]
-			}
-			if h[0] == "Accept" {
-				accept = h[1]
-			}
-			req.Header.Set(h[0], h[1])
-		} else {
+		delimIndex := strings.Index(Headers[i], ":")
+		if delimIndex == -1 {
 			log.Warnf("Header provided (%s) cannot be used. Headers must be in 'Key: Value' format (this may be caused by a header declared within the definition file).\n", Headers[i])
+			continue
+		}
+
+		key := Headers[i][:delimIndex]
+		value := Headers[i][delimIndex+1:]
+
+		if len(Headers) == 2 {
+			if key == "User-Agent" {
+				UserAgent = value
+			}
+			if key == "Content-Type" {
+				contentType = value
+			}
+			if key == "Accept" {
+				accept = value
+			}
+		} else {
+			req.Header.Set(key, value)
 		}
 	}
 
@@ -114,7 +121,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		rand.New(rand.NewSource(time.Now().UnixNano()))
 		UserAgent = userAgents[rand.Intn(len(userAgents))]
 		req.Header.Set("User-Agent", UserAgent)
-	} else if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
+	} else {
 		req.Header.Set("User-Agent", UserAgent)
 	}
 
