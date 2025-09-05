@@ -681,7 +681,7 @@ func EnforceSingleContentType(newContentType string) {
 	newContentType = strings.TrimSpace(newContentType)
 
 	// Remove old 'Content-Type' header
-	slices.DeleteFunc(Headers, func(h string) bool {
+	Headers = slices.DeleteFunc(Headers, func(h string) bool {
 		return strings.HasPrefix(strings.ToLower(h), "content-type:")
 	})
 
