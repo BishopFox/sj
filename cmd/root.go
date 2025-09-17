@@ -49,7 +49,7 @@ $ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "1.10.3",
+	Version: "2.0.0",
 }
 
 func Execute() {
@@ -72,7 +72,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&proxy, "proxy", "p", "NOPROXY", "Proxy host and port. Example: http://127.0.0.1:8080")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")
 	rootCmd.PersistentFlags().BoolVar(&randomUserAgent, "randomize-user-agent", false, "Randomizes the user agent string. Default is 'false'.")
-	rootCmd.PersistentFlags().IntVarP(&rateLimit, "rate", "r", 15, "Limit the number of requests per second.")
+	// rootCmd.PersistentFlags().IntVarP(&rateLimit, "rate", "r", 15, "Limit the number of requests per second.") // NEED TO RE-IMPLEMENT RATE LIMIT
 	rootCmd.PersistentFlags().StringArrayVarP(&safeWords, "safe-word", "s", nil, "Avoids 'dangerous word' check for the specified word(s). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().StringVarP(&apiTarget, "target", "T", "", "Manually set a target for the requests to be made if separate from the host the documentation resides on.")
 	rootCmd.PersistentFlags().Int64VarP(&timeout, "timeout", "t", 30, "Set the request timeout period.")

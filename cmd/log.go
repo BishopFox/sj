@@ -66,7 +66,7 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 			} else if sc == 1 {
 				logDangerous(target, method, tempLogger)
 			} else if sc == 8899 {
-				logVerboseJSON(target, method)
+				logVerboseJSON(specTitle, specDescription)
 			} else {
 				logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
 			}
@@ -86,13 +86,13 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 			} else if sc == 1 {
 				logDangerous(target, method, tempLogger)
 			} else if sc == 8899 {
-				logJSON(target, method)
+				logJSON(specTitle, specDescription)
 			} else {
 				logManual(sc, target, method, errorMsg, tempLogger)
 			}
 		} else {
 			if sc == 8899 {
-				logJSON(target, method)
+				logJSON(specTitle, specDescription)
 			} else {
 				logAccessible(sc, target, method, tempLogger)
 			}

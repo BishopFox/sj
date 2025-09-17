@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/mpvl/unique"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -25,25 +24,20 @@ This list contains the raw endpoints (parameter values will not be appended or m
 		client := CheckAndConfigureProxy()
 
 		var bodyBytes []byte
-		var paths []string
 
 		fmt.Printf("\n")
 		log.Infof("Gathering endpoints.\n\n")
 
 		if swaggerURL != "" {
 			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
-			paths = GenerateRequests(bodyBytes, client)
+			GenerateRequests(bodyBytes, client)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
 				log.Fatal("Error opening file:", err)
 			}
 			bodyBytes, _ = io.ReadAll(specFile)
-			paths = GenerateRequests(bodyBytes, client)
-		}
-		unique.Sort(unique.StringSlice{&paths})
-		for _, v := range paths {
-			fmt.Println(v)
+			GenerateRequests(bodyBytes, client)
 		}
 	},
 }

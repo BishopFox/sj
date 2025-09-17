@@ -31,9 +31,11 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			}
 		}
 
+		/* // NEED TO RE-IMPLEMENT RATE LIMIT
 		if rateLimit <= 0 {
 			log.Fatal("Invalid rate supplied. Must be a positive number")
 		}
+		*/
 
 		if randomUserAgent {
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
@@ -60,9 +62,11 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 			bodyBytes, _ = io.ReadAll(specFile)
 		}
+		/* // NEED TO RE-IMPLEMENT RATE LIMIT
 		if rateLimit > 0 && strings.ToLower(outputFormat) != "json" {
 			log.Info("Sending requests at a rate of ", rateLimit, " requests per second.")
 		}
+		*/
 		GenerateRequests(bodyBytes, client)
 	},
 }

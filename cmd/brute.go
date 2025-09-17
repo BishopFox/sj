@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,15 +10,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
+	"github.com/getkin/kin-openapi/openapi2"
+	"github.com/getkin/kin-openapi/openapi2conv"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/spf13/cobra"
-	"golang.org/x/time/rate"
+	"gopkg.in/yaml.v3"
 
 	log "github.com/sirupsen/logrus"
 )
 
+var endpointOnly bool
 var endpointWordlist string
 
 var prefixDirs []string = []string{"", "/swagger", "/swagger/docs", "/swagger/latest", "/swagger/v1", "/swagger/v2", "/swagger/v3", "/swagger/static", "/swagger/ui", "/swagger-ui", "/api-docs", "/api-docs/v1", "/api-docs/v2", "/apidocs", "/api", "/api/v1", "/api/v2", "/api/v3", "/v1", "/v2", "/v3", "/doc", "/docs", "/docs/swagger", "/docs/swagger/v1", "/docs/swagger/v2", "/docs/swagger-ui", "/docs/swagger-ui/v1", "/docs/swagger-ui/v2", "/docs/v1", "/docs/v2", "/docs/v3", "/public", "/redoc"}
@@ -32,9 +33,11 @@ var bruteCmd = &cobra.Command{
 	Long:  `The brute command sends requests to the target to find operation definitions based on commonly used file locations.`,
 	Run: func(cmd *cobra.Command, args []string) {
 
+		/* // NEED TO RE-IMPLEMENT RATE LIMIT
 		if rateLimit <= 0 {
 			log.Fatal("Invalid rate supplied. Must be a positive number")
 		}
+		*/
 
 		if randomUserAgent {
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
@@ -103,7 +106,11 @@ var bruteCmd = &cobra.Command{
 					log.Infof("Wrote file to %s\n", f)
 				}
 			} else {
-				fmt.Println(string(definedOperations))
+				if endpointOnly {
+					return
+				} else {
+					fmt.Println(string(definedOperations))
+				}
 			}
 			// TODO: Check if (future implementation) automate flag is true and if so than call the 'sj automate' command with the discovered definition file.
 		} else {
@@ -128,45 +135,38 @@ func makeURLs(target string, endpoints []string, fileExtension string) []string 
 }
 
 func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
-	var rateLimiter = rate.NewLimiter(rate.Every(time.Second/(time.Duration(rateLimit))), 1)
 
 	for i, url := range urls {
-		if rateLimit > 0 {
-			if err := rateLimiter.Wait(context.Background()); err != nil {
-				fmt.Println("Rate limit error...")
-			} else {
-				ct := CheckContentType(client, url)
-				if strings.Contains(ct, "application/json") {
-					bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
-					if bodyBytes != nil {
-						checkSpec := UnmarshalSpec(bodyBytes)
-						if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
-							fmt.Println("")
-							log.Infof("Definition file found: %s\n", url)
-							return true, checkSpec
-						}
-					}
-				} else if strings.Contains(ct, "application/javascript") {
-					bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil)
-					if bodyBytes != nil {
-						regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
-						matches := regexPattern.FindAllStringSubmatch(bodyString, -1)
-						for _, match := range matches {
-							jsonContent := match[2]
-							checkSpec := UnmarshalSpec([]byte(jsonContent))
-							if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
-								log.Infof("\nFound operation definitions embedded in JavaScript file at %s\n", url)
-								return true, checkSpec
-							}
-						}
-					}
-				}
-				if i == len(urls) {
-					fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
-				} else {
-					fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
+		ct := CheckContentType(client, url)
+		if strings.Contains(ct, "application/json") {
+			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
+			if bodyBytes != nil {
+				checkSpec := UnmarshalSpec(bodyBytes)
+				if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
+					fmt.Println("")
+					log.Infof("Definition file found: %s\n", url)
+					return true, checkSpec
 				}
 			}
+		} else if strings.Contains(ct, "application/javascript") {
+			bodyBytes, bodyString, _ := MakeRequest(client, "GET", url, timeout, nil)
+			if bodyBytes != nil {
+				regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
+				matches := regexPattern.FindAllStringSubmatch(bodyString, -1)
+				for _, match := range matches {
+					jsonContent := match[2]
+					checkSpec := UnmarshalSpec([]byte(jsonContent))
+					if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
+						log.Infof("\nFound operation definitions embedded in JavaScript file at %s\n", url)
+						return true, checkSpec
+					}
+				}
+			}
+		}
+		if i == len(urls) {
+			fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
+		} else {
+			fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
 		}
 	}
 	return false, nil
@@ -175,4 +175,86 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 func init() {
 	// TODO: Add a flag here (boolean) that defaults to false that will cause the program to execute 'sj automate' on the discovered definition file automatically.
 	bruteCmd.PersistentFlags().StringVarP(&endpointWordlist, "wordlist", "w", "", "The file containing a list of paths to brute force for discovery.")
+	bruteCmd.Flags().BoolVarP(&endpointOnly, "endpoint-only", "e", false, "Only return the identified endpoint")
+}
+
+func ExtractSpecFromJS(bodyBytes []byte) []byte {
+	var openApiIndex int
+	var specClose int
+	var bodyString, spec string
+
+	bodyString = string(bodyBytes)
+	spec = strings.ReplaceAll(bodyString, "\n", "")
+	spec = strings.ReplaceAll(spec, "\t", "")
+	spec = strings.ReplaceAll(spec, " ", "")
+
+	if strings.Contains(strings.ReplaceAll(bodyString, " ", ""), `"swagger":"2.0"`) {
+		openApiIndex = strings.Index(spec, `"swagger":`) - 1
+		specClose = strings.LastIndex(spec, "]}") + 2
+
+		var doc2 openapi2.T
+		bodyBytes = []byte(spec[openApiIndex:specClose])
+		_ = json.Unmarshal(bodyBytes, &doc2)
+		if !strings.Contains(doc2.Swagger, "2") {
+			specClose = strings.LastIndex(spec, "}") + 1
+			bodyBytes = []byte(spec[openApiIndex:specClose])
+			_ = json.Unmarshal(bodyBytes, &doc2)
+			if !strings.Contains(doc2.Swagger, "2") {
+				log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
+			}
+		}
+	} else if strings.Contains(strings.ReplaceAll(bodyString, " ", ""), `"openapi":"3`) {
+		openApiIndex = strings.Index(spec, `"openapi":`) - 1
+
+		specClose = strings.LastIndex(spec, "]}") + 2
+
+		var doc3 openapi3.T
+		bodyBytes = []byte(spec[openApiIndex:specClose])
+		_ = json.Unmarshal(bodyBytes, &doc3)
+		if !strings.Contains(doc3.OpenAPI, "3") {
+			specClose = strings.LastIndex(spec, "}") + 1
+			bodyBytes = []byte(spec[openApiIndex:specClose])
+			_ = json.Unmarshal(bodyBytes, &doc3)
+			if !strings.Contains(doc3.OpenAPI, "3") {
+				log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
+			}
+		}
+	} else {
+		log.Error("Error parsing JavaScript file for spec. Try saving the object as a JSON file and reference it locally.")
+	}
+
+	return bodyBytes
+}
+
+func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
+	var doc openapi2.T
+	var doc3 openapi3.T
+
+	format = strings.ToLower(format)
+	if format == "js" || strings.HasSuffix(swaggerURL, ".js") {
+		bodyBytes = ExtractSpecFromJS(bodyBytes)
+	} else if format == "yaml" || format == "yml" || strings.HasSuffix(swaggerURL, ".yaml") || strings.HasSuffix(swaggerURL, ".yml") {
+		_ = yaml.Unmarshal(bodyBytes, &doc)
+		_ = yaml.Unmarshal(bodyBytes, &doc3)
+	}
+
+	_ = json.Unmarshal(bodyBytes, &doc)
+	_ = json.Unmarshal(bodyBytes, &doc3)
+
+	if strings.HasPrefix(doc3.OpenAPI, "3") {
+		newDoc := &doc3
+		return newDoc
+	} else if strings.HasPrefix(doc.Swagger, "2") {
+		newDoc, err := openapi2conv.ToV3(&doc)
+		if err != nil {
+			fmt.Printf("Error converting v2 document to v3: %s\n", err)
+		}
+		return newDoc
+	} else if os.Args[1] == "brute" {
+		var noDoc openapi3.T
+		return &noDoc
+	} else {
+		log.Fatal("Error parsing definition file.")
+		return nil
+	}
 }

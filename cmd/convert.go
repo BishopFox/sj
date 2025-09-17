@@ -69,7 +69,8 @@ var convertCmd = &cobra.Command{
 				fmt.Printf("Error converting v2 document to v3: %s\n", err)
 			}
 
-			if format == "json" {
+			switch format {
+			case "json":
 				if strings.HasSuffix(outfile, "yaml") || strings.HasSuffix(outfile, "yml") {
 					log.Warn("It looks like you're trying to save the file in YAML format. Supply the '-f yaml' option to do so (default: json).")
 				}
@@ -91,7 +92,7 @@ var convertCmd = &cobra.Command{
 						WriteConvertedDefinitionFile(converted)
 					}
 				}
-			} else if format == "yaml" || format == "yml" {
+			case "yaml", "yml":
 				converted, err := yaml.Marshal(newDoc)
 				if err != nil {
 					log.Fatal("Error converting definition file to v3:", err)
