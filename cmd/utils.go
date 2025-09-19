@@ -98,7 +98,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 								apiTarget = serverURL
 							} else {
 								basePath = serverURL
-								apiTarget = u.Scheme + "://" + u.Host + serverURL
+								apiTarget = u.Scheme + "://" + u.Host
 							}
 						}
 					}
