@@ -181,7 +181,20 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 																var pValue string
 																if propertyName, ok := properties[propertyItem].(map[string]interface{}); ok {
 																	if exampleValue, ok := propertyName["example"]; ok {
-																		pValue = exampleValue.(string)
+																		switch ex := exampleValue.(type) {
+																		case string:
+																			pValue = exampleValue.(string)
+																		case []interface{}:
+																			if len(ex) > 0 {
+																				if v, ok := ex[0].(string); ok {
+																					pValue = v
+																				} else {
+																					pValue = "1"
+																				}
+																			}
+																		default:
+																			pValue = "1"
+																		}
 																	} else if propertyType, ok := propertyName["type"].(string); ok {
 																		// Attempt to prevent version strings from being improperly supplied (i.e. v1)
 																		if propertyType == "string" && propertyName["name"] != "version" {
@@ -384,7 +397,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 										jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
 									}
 									if outputFormat == "console" {
-										writeLog(sc, basePath+logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
+										writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 									}
 								}
 							} else {
@@ -394,7 +407,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 									jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
 								}
 								if outputFormat == "console" {
-									writeLog(sc, basePath+logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
+									writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 								}
 							}
 
