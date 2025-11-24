@@ -181,7 +181,18 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 																var pValue string
 																if propertyName, ok := properties[propertyItem].(map[string]interface{}); ok {
 																	if exampleValue, ok := propertyName["example"]; ok {
-																		pValue = exampleValue.(string)
+																		switch v := exampleValue.(type) {
+																		case string:
+																			pValue = v
+																		case bool:
+																			pValue = fmt.Sprintf("%t", v)
+																		case int:
+																			pValue = fmt.Sprintf("%d", v)
+																		case float64:
+																			pValue = fmt.Sprintf("%.0f", v)
+																		default:
+																			pValue = fmt.Sprintf("%v", v)
+																		}
 																	} else if propertyType, ok := propertyName["type"].(string); ok {
 																		// Attempt to prevent version strings from being improperly supplied (i.e. v1)
 																		if propertyType == "string" && propertyName["name"] != "version" {
@@ -357,7 +368,9 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 							var postBodyData string
 							if strings.ToLower(method) == "post" && strings.Contains(curl, "-d") {
 								dataIndex := strings.Index(curl, "'")
-								postBodyData = curl[dataIndex+1 : len(curl)-1]
+								if dataIndex != -1 && dataIndex+1 < len(curl)-1 {
+									postBodyData = curl[dataIndex+1 : len(curl)-1]
+								}
 							}
 
 							_, resp, sc := MakeRequest(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
