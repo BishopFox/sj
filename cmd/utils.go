@@ -205,7 +205,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 
 																	}
 
-																	if strings.Contains(curl, "-d") {
+																	if strings.Contains(curl, "-d '") {
 																		bodyData += fmt.Sprintf("&%s=%s", propertyItem, pValue)
 																		curl = strings.TrimSuffix(curl, "'")
 																		curl += fmt.Sprintf("&%s=%s'", propertyItem, pValue)
@@ -213,7 +213,6 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 																		bodyData += fmt.Sprintf("%s=%s", propertyItem, pValue)
 																		curl += fmt.Sprintf(" -d '%s=%s'", propertyItem, pValue)
 																	}
-
 																}
 															}
 														}
@@ -242,7 +241,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 										case "header":
 											curl += fmt.Sprintf(" -H \"%s: %s\"", name, pValue)
 										case "body":
-											if strings.Contains(curl, "-d") {
+											if strings.Contains(curl, "-d '") {
 												bodyData += fmt.Sprintf("&%s=%s", name, pValue)
 												curl = strings.TrimSuffix(curl, "'")
 												curl += fmt.Sprintf("&%s=%s'", name, pValue)
