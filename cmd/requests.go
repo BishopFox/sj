@@ -98,22 +98,19 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 			continue
 		}
 
-		key := Headers[i][:delimIndex]
-		value := Headers[i][delimIndex+1:]
+		key := strings.TrimSpace(Headers[i][:delimIndex])
+		value := strings.TrimSpace(Headers[i][delimIndex+1:])
 
-		if len(Headers) == 2 {
-			if key == "User-Agent" {
-				UserAgent = value
-			}
-			if key == "Content-Type" {
-				contentType = value
-			}
-			if key == "Accept" {
-				accept = value
-			}
-		} else {
-			req.Header.Set(key, value)
+		if key == "User-Agent" {
+			UserAgent = value
 		}
+		if key == "Content-Type" {
+			contentType = value
+		}
+		if key == "Accept" {
+			accept = value
+		}
+		req.Header.Set(key, value)
 	}
 
 	// User-Agent handling
