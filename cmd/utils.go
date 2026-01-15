@@ -96,6 +96,8 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 						if serverURL, ok := srv["url"].(string); ok {
 							if strings.Contains(serverURL, "://") {
 								apiTarget = serverURL
+							} else if serverURL == "/" {
+								basePath = ""
 							} else {
 								basePath = serverURL
 								apiTarget = u.Scheme + "://" + u.Host
