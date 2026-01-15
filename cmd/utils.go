@@ -62,7 +62,9 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 			// Swagger (v2)
 			host, _ := spec["host"].(string)
 			bp, _ := spec["basePath"].(string)
-			if bp != "" {
+			if bp == "/" {
+				basePath = ""
+			} else if bp != "" {
 				basePath = bp
 			}
 
