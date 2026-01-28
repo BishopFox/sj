@@ -171,7 +171,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 												pType = schema["type"].(string)
 												// Attempt to prevent version strings from being improperly supplied (i.e. v1)
 												if pType == "string" && pMap["name"] != "version" {
-													pValue = "bishopfox"
+													pValue = testString
 												} else {
 													pValue = "1"
 												}
@@ -202,7 +202,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 																	} else if propertyType, ok := propertyName["type"].(string); ok {
 																		// Attempt to prevent version strings from being improperly supplied (i.e. v1)
 																		if propertyType == "string" && propertyName["name"] != "version" {
-																			pValue = "bishopfox"
+																			pValue = testString
 																		} else {
 																			pValue = "1"
 																		}
@@ -227,7 +227,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 										} else if pType, ok := pMap["type"].(string); ok {
 											// Attempt to prevent version strings from being improperly supplied (i.e. v1)
 											if pType == "string" && pMap["name"] != "version" {
-												pValue = "bishopfox"
+												pValue = testString
 											} else {
 												pValue = "1"
 											}
@@ -286,7 +286,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 																			case "string":
 																				// Attempt to prevent version strings from being improperly supplied (i.e. v1)
 																				if propertyName["name"] != "version" {
-																					pValue = "bishopfox"
+																					pValue = testString
 																				} else {
 																					pValue = "1"
 																				}

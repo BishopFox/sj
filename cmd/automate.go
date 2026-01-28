@@ -14,6 +14,7 @@ import (
 var getAccessibleEndpoints bool
 var outputFormat string
 var responsePreviewLength int
+var testString string
 var verbose bool
 
 var automateCmd = &cobra.Command{
@@ -74,6 +75,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 func init() {
 	automateCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "F", "console", "The output format. Only 'console' (default) and 'json' are supported at the moment.")
 	automateCmd.PersistentFlags().BoolVar(&getAccessibleEndpoints, "get-accessible-endpoints", false, "Only output the accessible endpoints (those that return a 200 status code).")
+	automateCmd.PersistentFlags().StringVar(&testString, "test-string", "bishopfox", "The string to use when testing endpoints with string values.")
 	automateCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose mode, which shows a preview of each response.")
 	automateCmd.PersistentFlags().IntVar(&responsePreviewLength, "response-preview-length", 50, "sets the response preview length when using verbose output.")
 
