@@ -7,6 +7,9 @@ import (
 
 var apiTarget string
 var basePath string
+var customDate string
+var customEmail string
+var customURL string
 var format string
 var insecure bool
 var localFile string
@@ -49,7 +52,7 @@ $ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 			log.Error("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "2.2.1",
+	Version: "2.3.0",
 }
 
 func Execute() {
@@ -64,6 +67,9 @@ func init() {
 	rootCmd.AddCommand(convertCmd)
 	rootCmd.PersistentFlags().StringVarP(&UserAgent, "agent", "A", "Swagger Jacker (github.com/BishopFox/sj)", "Set the User-Agent string.")
 	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the definition file (i.e. /V2/).")
+	rootCmd.PersistentFlags().StringVarP(&customURL, "custom-url", "c", "https://bishopfox.com", "Set a custom URL to test discovered URL parameters.")
+	rootCmd.PersistentFlags().StringVarP(&customDate, "custom-date", "d", "1990-01-01", "A custom date to test discovered date parameters.")
+	rootCmd.PersistentFlags().StringVar(&customEmail, "custom-email", "noreply@localhost.localdomain", "A custom email address to test discovered email parameters.")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the definition file (json/yaml/yml/js).")
 	rootCmd.PersistentFlags().StringArrayVarP(&Headers, "headers", "H", nil, "Add custom headers, separated by a colon (\"Name: Value\"). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Ignores server certificate validation.")

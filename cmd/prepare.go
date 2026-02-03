@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -20,6 +21,12 @@ This enables you to test specific API functions for common vulnerabilities or mi
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
 				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
+		}
+
+		_, err := time.Parse("2006-01-02", customDate)
+		if err != nil {
+			fmt.Println("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
+			os.Exit(1)
 		}
 
 		client := CheckAndConfigureProxy()

@@ -31,183 +31,6 @@ type SchemaNode struct {
 	Ref        string
 }
 
-func EnforceSingleContentType(newContentType string) {
-	newContentType = strings.TrimSpace(newContentType)
-
-	// Remove old 'Content-Type' header
-	Headers = slices.DeleteFunc(Headers, func(h string) bool {
-		return strings.HasPrefix(strings.ToLower(h), "content-type:")
-	})
-
-	Headers = append(Headers, "Content-Type: "+newContentType)
-
-	// Remove empty elements to avoid repetitions of "-H ''"
-	Headers = slices.DeleteFunc(Headers, func(h string) bool {
-		return strings.TrimSpace(h) == ""
-	})
-}
-
-func ExpandSchema(
-	spec map[string]interface{},
-	schema map[string]interface{},
-	visited map[string]bool,
-) *SchemaNode {
-	if schema == nil {
-		return &SchemaNode{Type: "object"}
-	}
-
-	if ref, ok := schema["$ref"].(string); ok {
-		if visited[ref] {
-			return &SchemaNode{Type: "object"} // break cycle
-		}
-		visited[ref] = true
-
-		resolved := ResolveRef(spec, ref)
-		if resolved == nil {
-			return &SchemaNode{Type: "object"}
-		}
-		return ExpandSchema(spec, resolved, visited)
-	}
-
-	node := &SchemaNode{
-		Properties: map[string]*SchemaNode{},
-		Required:   map[string]bool{},
-	}
-
-	if t, ok := schema["type"].(string); ok {
-		node.Type = t
-	}
-
-	if props, ok := schema["properties"].(map[string]interface{}); ok {
-		for name, raw := range props {
-			if m, ok := raw.(map[string]interface{}); ok {
-				node.Properties[name] = ExpandSchema(spec, m, visited)
-			}
-		}
-	}
-
-	if items, ok := schema["items"].(map[string]interface{}); ok {
-		node.Items = ExpandSchema(spec, items, visited)
-	}
-
-	if allOf, ok := schema["allOf"].([]interface{}); ok {
-		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}}
-		for _, entry := range allOf {
-			if m, ok := entry.(map[string]interface{}); ok {
-				sub := ExpandSchema(spec, m, visited)
-				for k, v := range sub.Properties {
-					merged.Properties[k] = v
-				}
-			}
-		}
-		return merged
-	}
-
-	return node
-}
-
-func GenerateExample(node *SchemaNode) interface{} {
-	switch node.Type {
-	case "object", "":
-		obj := map[string]interface{}{}
-		for k, v := range node.Properties {
-			obj[k] = GenerateExample(v)
-		}
-		return obj
-	case "array":
-		if node.Items != nil {
-			return []interface{}{GenerateExample(node.Items)}
-		}
-		return []interface{}{}
-	case "string":
-		return testString
-	case "integer", "number":
-		return 1
-	case "boolean":
-		return true
-	default:
-		return nil
-	}
-}
-
-func GenerateRequests(bodyBytes []byte, client http.Client) {
-	// Ingests the specification file
-	spec := SafelyUnmarshalSpec(bodyBytes)
-
-	// Checks defined security schemes and prompts for authentication
-	CheckSecuritySchemes(spec)
-
-	u, _ := url.Parse(swaggerURL)
-
-	// Gets the target server and base path from the specification file
-	if apiTarget == "" {
-		if v, ok := spec["swagger"].(string); ok && strings.HasPrefix(v, "2") {
-			// Swagger (v2)
-			host, _ := spec["host"].(string)
-			bp, _ := spec["basePath"].(string)
-			if bp == "/" {
-				basePath = ""
-			} else if bp != "" {
-				basePath = bp
-			}
-
-			if host != "" && strings.Contains(host, "://") {
-				apiTarget = host
-			} else {
-				if host != "" {
-					apiTarget = u.Scheme + "://" + host
-				}
-			}
-		} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
-			// OpenAPI (v3)
-			if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
-				if len(servers) > 1 {
-					if !quiet && (os.Args[1] != "endpoints") && apiTarget == "" {
-						log.Warn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
-						for i := range servers {
-							if srv, ok := servers[i].(map[string]interface{}); ok {
-								if serverURL, ok := srv["url"].(string); ok {
-									if strings.Contains(serverURL, "://") {
-										fmt.Println(serverURL)
-									} else {
-										fmt.Println(apiTarget + serverURL)
-									}
-								}
-							}
-						}
-					}
-				} else {
-					if srv, ok := servers[0].(map[string]interface{}); ok {
-						if serverURL, ok := srv["url"].(string); ok {
-							if strings.Contains(serverURL, "://") {
-								apiTarget = serverURL
-							} else if serverURL == "/" {
-								basePath = ""
-							} else {
-								basePath = serverURL
-								apiTarget = u.Scheme + "://" + u.Host
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Use the original host at the target if no server found from specification.
-	if apiTarget == "" {
-		apiTarget = u.Scheme + "://" + u.Host
-	}
-
-	if os.Args[1] != "endpoints" {
-		// Prints Title/Description/Version values if they exist
-		PrintSpecInfo(spec)
-	}
-
-	// Reviews all defined API routes and builds requests as defined
-	BuildRequestsFromPaths(spec, client)
-}
-
 func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 	paths, ok := spec["paths"].(map[string]interface{})
 	if !ok || paths == nil {
@@ -464,6 +287,191 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 		}
 		writeLog(8899, "", "", "", "")
 	}
+}
+
+func EnforceSingleContentType(newContentType string) {
+	newContentType = strings.TrimSpace(newContentType)
+
+	// Remove old 'Content-Type' header
+	Headers = slices.DeleteFunc(Headers, func(h string) bool {
+		return strings.HasPrefix(strings.ToLower(h), "content-type:")
+	})
+
+	Headers = append(Headers, "Content-Type: "+newContentType)
+
+	// Remove empty elements to avoid repetitions of "-H ''"
+	Headers = slices.DeleteFunc(Headers, func(h string) bool {
+		return strings.TrimSpace(h) == ""
+	})
+}
+
+func ExpandSchema(
+	spec map[string]interface{},
+	schema map[string]interface{},
+	visited map[string]bool,
+) *SchemaNode {
+	if schema == nil {
+		return &SchemaNode{Type: "object"}
+	}
+
+	if ref, ok := schema["$ref"].(string); ok {
+		if visited[ref] {
+			return &SchemaNode{Type: "object"} // break cycle
+		}
+		visited[ref] = true
+
+		resolved := ResolveRef(spec, ref)
+		if resolved == nil {
+			return &SchemaNode{Type: "object"}
+		}
+		return ExpandSchema(spec, resolved, visited)
+	}
+
+	node := &SchemaNode{
+		Properties: map[string]*SchemaNode{},
+		Required:   map[string]bool{},
+	}
+
+	if t, ok := schema["type"].(string); ok {
+		node.Type = t
+	}
+
+	if props, ok := schema["properties"].(map[string]interface{}); ok {
+		for name, raw := range props {
+			if m, ok := raw.(map[string]interface{}); ok {
+				node.Properties[name] = ExpandSchema(spec, m, visited)
+			}
+		}
+	}
+
+	if items, ok := schema["items"].(map[string]interface{}); ok {
+		node.Items = ExpandSchema(spec, items, visited)
+	}
+
+	if allOf, ok := schema["allOf"].([]interface{}); ok {
+		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}}
+		for _, entry := range allOf {
+			if m, ok := entry.(map[string]interface{}); ok {
+				sub := ExpandSchema(spec, m, visited)
+				for k, v := range sub.Properties {
+					merged.Properties[k] = v
+				}
+			}
+		}
+		return merged
+	}
+
+	return node
+}
+
+func GenerateExample(node *SchemaNode) interface{} {
+	switch node.Type {
+	case "object", "":
+		obj := map[string]interface{}{}
+		for k, v := range node.Properties {
+			if strings.Contains(strings.ToLower(k), "date") {
+				obj[k] = customDate
+			} else if strings.Contains(strings.ToLower(k), "url") {
+				obj[k] = customURL
+			} else if strings.Contains(strings.ToLower(k), "email") {
+				obj[k] = customEmail
+			} else {
+				obj[k] = GenerateExample(v)
+			}
+		}
+		return obj
+	case "array":
+		if node.Items != nil {
+			return []interface{}{GenerateExample(node.Items)}
+		}
+		return []interface{}{}
+	case "string":
+		return testString
+	case "integer", "number":
+		return 1
+	case "boolean":
+		return true
+	default:
+		return nil
+	}
+}
+
+func GenerateRequests(bodyBytes []byte, client http.Client) {
+	// Ingests the specification file
+	spec := SafelyUnmarshalSpec(bodyBytes)
+
+	// Checks defined security schemes and prompts for authentication
+	CheckSecuritySchemes(spec)
+
+	u, _ := url.Parse(swaggerURL)
+
+	// Gets the target server and base path from the specification file
+	if apiTarget == "" {
+		if v, ok := spec["swagger"].(string); ok && strings.HasPrefix(v, "2") {
+			// Swagger (v2)
+			host, _ := spec["host"].(string)
+			bp, _ := spec["basePath"].(string)
+			if bp == "/" {
+				basePath = ""
+			} else if bp != "" {
+				basePath = bp
+			}
+
+			if host != "" && strings.Contains(host, "://") {
+				apiTarget = host
+			} else {
+				if host != "" {
+					apiTarget = u.Scheme + "://" + host
+				}
+			}
+		} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
+			// OpenAPI (v3)
+			if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
+				if len(servers) > 1 {
+					if !quiet && (os.Args[1] != "endpoints") && apiTarget == "" {
+						log.Warn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
+						for i := range servers {
+							if srv, ok := servers[i].(map[string]interface{}); ok {
+								if serverURL, ok := srv["url"].(string); ok {
+									if strings.Contains(serverURL, "://") {
+										fmt.Println(serverURL)
+									} else {
+										fmt.Println(apiTarget + serverURL)
+									}
+								}
+							}
+						}
+					}
+				} else {
+					if srv, ok := servers[0].(map[string]interface{}); ok {
+						if serverURL, ok := srv["url"].(string); ok {
+							if strings.Contains(serverURL, "://") {
+								apiTarget = serverURL
+							} else if serverURL == "/" {
+								basePath = ""
+							} else {
+								basePath = serverURL
+								apiTarget = u.Scheme + "://" + u.Host
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Use the original host at the target if no server found from specification.
+	if apiTarget == "" {
+		apiTarget = u.Scheme + "://" + u.Host
+	}
+
+	if os.Args[1] != "endpoints" {
+		// Prints Title/Description/Version values if they exist
+		PrintSpecInfo(spec)
+	}
+
+	// Reviews all defined API routes and builds requests as defined
+	BuildRequestsFromPaths(spec, client)
 }
 
 func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {

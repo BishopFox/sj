@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -42,6 +43,12 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
 				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
+		}
+
+		_, err := time.Parse("2006-01-02", customDate)
+		if err != nil {
+			fmt.Println("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
+			os.Exit(1)
 		}
 
 		var bodyBytes []byte
