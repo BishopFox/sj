@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,28 +21,112 @@ var jsonVerboseResultArray []VerboseResult
 var specTitle string
 var specDescription string
 
-func PrintSpecInfo(spec map[string]interface{}) {
-	info, ok := spec["info"].(map[string]interface{})
-	if !ok || info == nil {
-		log.Info("No information defined in the documentation.")
-	} else {
-		title, ok := info["title"].(string)
-		if ok && title != "" {
-			if outputFormat == "json" {
-				specTitle = title
-			} else {
-				fmt.Printf("Title: %s\n", title)
-			}
-		}
+type SchemaNode struct {
+	Type       string
+	Properties map[string]*SchemaNode
+	Items      *SchemaNode
+	Required   map[string]bool
+	Enum       []interface{}
+	Example    interface{}
+	Ref        string
+}
 
-		description, ok := info["description"].(string)
-		if ok && description != "" {
-			if outputFormat == "json" {
-				specDescription = description
-			} else {
-				fmt.Printf("Description: %s\n", description)
+func EnforceSingleContentType(newContentType string) {
+	newContentType = strings.TrimSpace(newContentType)
+
+	// Remove old 'Content-Type' header
+	Headers = slices.DeleteFunc(Headers, func(h string) bool {
+		return strings.HasPrefix(strings.ToLower(h), "content-type:")
+	})
+
+	Headers = append(Headers, "Content-Type: "+newContentType)
+
+	// Remove empty elements to avoid repetitions of "-H ''"
+	Headers = slices.DeleteFunc(Headers, func(h string) bool {
+		return strings.TrimSpace(h) == ""
+	})
+}
+
+func ExpandSchema(
+	spec map[string]interface{},
+	schema map[string]interface{},
+	visited map[string]bool,
+) *SchemaNode {
+	if schema == nil {
+		return &SchemaNode{Type: "object"}
+	}
+
+	if ref, ok := schema["$ref"].(string); ok {
+		if visited[ref] {
+			return &SchemaNode{Type: "object"} // break cycle
+		}
+		visited[ref] = true
+
+		resolved := ResolveRef(spec, ref)
+		if resolved == nil {
+			return &SchemaNode{Type: "object"}
+		}
+		return ExpandSchema(spec, resolved, visited)
+	}
+
+	node := &SchemaNode{
+		Properties: map[string]*SchemaNode{},
+		Required:   map[string]bool{},
+	}
+
+	if t, ok := schema["type"].(string); ok {
+		node.Type = t
+	}
+
+	if props, ok := schema["properties"].(map[string]interface{}); ok {
+		for name, raw := range props {
+			if m, ok := raw.(map[string]interface{}); ok {
+				node.Properties[name] = ExpandSchema(spec, m, visited)
 			}
 		}
+	}
+
+	if items, ok := schema["items"].(map[string]interface{}); ok {
+		node.Items = ExpandSchema(spec, items, visited)
+	}
+
+	if allOf, ok := schema["allOf"].([]interface{}); ok {
+		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}}
+		for _, entry := range allOf {
+			if m, ok := entry.(map[string]interface{}); ok {
+				sub := ExpandSchema(spec, m, visited)
+				for k, v := range sub.Properties {
+					merged.Properties[k] = v
+				}
+			}
+		}
+		return merged
+	}
+
+	return node
+}
+
+func GenerateExample(node *SchemaNode) interface{} {
+	switch node.Type {
+	case "object", "":
+		obj := map[string]interface{}{}
+		for k, v := range node.Properties {
+			obj[k] = GenerateExample(v)
+		}
+		return obj
+	case "array":
+		if node.Items != nil {
+			return []interface{}{GenerateExample(node.Items)}
+		}
+		return []interface{}{}
+	case "string":
+		return testString
+	case "integer", "number":
+		return 1
+	case "boolean":
+		return true
+	default:
+		return nil
 	}
 }
 
@@ -271,94 +354,19 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 
 									if ct, ok := contentTypes[cType].(map[string]interface{}); ok {
 										if schema, ok := ct["schema"].(map[string]interface{}); ok {
-											if ref, ok := schema["$ref"].(string); ok {
-												if components, ok := spec["components"].(map[string]interface{}); ok {
-													if schemas, ok := components["schemas"].(map[string]interface{}); ok {
-														schemaName := strings.TrimPrefix(ref, "#/components/schemas/")
-														if s, ok := schemas[schemaName].(map[string]interface{}); ok {
-															if properties, ok := s["properties"].(map[string]interface{}); ok {
+											expanded := ExpandSchema(spec, schema, map[string]bool{})
+											example := GenerateExample(expanded)
 
-																for propertyItem := range properties {
-																	var pValue string
-																	if propertyName, ok := properties[propertyItem].(map[string]interface{}); ok {
-																		if propertyType, ok := propertyName["type"].(string); ok {
-																			switch propertyType {
-																			case "string":
-																				// Attempt to prevent version strings from being improperly supplied (i.e. v1)
-																				if propertyName["name"] != "version" {
-																					pValue = testString
-																				} else {
-																					pValue = "1"
-																				}
-																			case "int":
-																				pValue = "1"
-																			default:
-																				pValue = "1"
-																			}
-
-																			switch cType {
-																			case "application/json":
-																				if strings.Contains(curl, "-d") && strings.Contains(curl, "application/json") {
-																					bodyData = ""
-																					curl = strings.TrimSuffix(curl, "}'")
-																					if propertyType == "string" {
-																						bodyData += fmt.Sprintf(",\"%s\":\"%s\"}'", propertyItem, pValue)
-																					} else {
-																						bodyData += fmt.Sprintf(",\"%s\":%s}'", propertyItem, pValue)
-																					}
-																					curl += bodyData
-																				} else if !strings.Contains(curl, "Content-Type") {
-																					if propertyType == "string" {
-																						bodyData += fmt.Sprintf("{\"%s\":\"%s\"}", propertyItem, pValue)
-																					} else {
-																						bodyData += fmt.Sprintf("{\"%s\":%s}", propertyItem, pValue)
-																					}
-
-																					curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", contentType, bodyData)
-																				}
-																			case "application/xml", "text/xml":
-																				bodyData = ""
-																				type Element struct {
-																					XMLName xml.Name
-																					Content any `xml:",chardata"`
-																				}
-
-																				type Root struct {
-																					XMLName  xml.Name  `xml:"root"`
-																					Elements []Element `xml:",any"`
-																				}
-
-																				var elements []Element
-																				elements = append(elements, Element{
-																					XMLName: xml.Name{Local: propertyItem},
-																					Content: pValue,
-																				})
-
-																				root := Root{
-																					Elements: elements,
-																				}
-
-																				xmlData, err := xml.Marshal(root)
-																				if err != nil {
-																					log.Warn("Error marshalling XML data.")
-																				}
-
-																				if strings.Contains(curl, "-d") && strings.Contains(curl, "xml") {
-																					curl = strings.TrimSuffix(curl, "</root>'")
-																					bodyData = strings.TrimSuffix(bodyData, "</root>'")
-																					bodyData += strings.TrimPrefix(string(xmlData), "<root>")
-																					curl += bodyData + "'"
-																				} else if !strings.Contains(curl, "Content-Type") {
-																					bodyData = string(xmlData)
-																					curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", contentType, bodyData)
-																				}
-																			}
-																		}
-																	}
-																}
-															}
-														}
-													}
+											if cType == "application/json" {
+												bodyBytes, err := json.Marshal(example)
+												if err == nil {
+													curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'\"", bodyBytes)
+												}
+											}
+											if cType == "application/xml" || cType == "text/xml" {
+												if obj, ok := example.(map[string]interface{}); ok {
+													xml := XmlFromObject(obj)
+													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, xml)
 												}
 											}
 										}
@@ -458,6 +466,51 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 	}
 }
 
+func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {
+	if !strings.HasPrefix(ref, "#") {
+		return nil
+	}
+
+	parts := strings.Split(ref[2:], "/")
+	var cur interface{} = spec
+
+	for _, p := range parts {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		cur = m[p]
+	}
+
+	resolved, _ := cur.(map[string]interface{})
+	return resolved
+}
+
+func PrintSpecInfo(spec map[string]interface{}) {
+	info, ok := spec["info"].(map[string]interface{})
+	if !ok || info == nil {
+		log.Info("No information defined in the documentation.")
+	} else {
+		title, ok := info["title"].(string)
+		if ok && title != "" {
+			if outputFormat == "json" {
+				specTitle = title
+			} else {
+				fmt.Printf("Title: %s\n", title)
+			}
+		}
+
+		description, ok := info["description"].(string)
+		if ok && description != "" {
+			if outputFormat == "json" {
+				specDescription = description
+			} else {
+				fmt.Printf("Description: %s\n", description)
+			}
+		}
+	}
+}
+
 func SetScheme(swaggerURL string) (scheme string) {
 	if strings.HasPrefix(swaggerURL, "http://") {
 		scheme = "http"
@@ -467,6 +520,17 @@ func SetScheme(swaggerURL string) (scheme string) {
 		scheme = "https"
 	}
 	return scheme
+}
+
+func SafelyUnmarshalSpec(data []byte) map[string]interface{} {
+
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		fmt.Printf("Failed to unmarshal API documentation: %v\n", err)
+		os.Exit(1)
+	}
+
+	return doc
 }
 
 /*
@@ -487,29 +551,29 @@ func TrimHostScheme(apiTarget, fullUrlHost string) (host string) {
 	return host
 }
 
-func SafelyUnmarshalSpec(data []byte) map[string]interface{} {
+func XmlFromObject(obj map[string]interface{}) string {
+	var b strings.Builder
 
-	var doc map[string]interface{}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		fmt.Printf("Failed to unmarshal API documentation: %v\n", err)
-		os.Exit(1)
+	for k, v := range obj {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			b.WriteString("<" + k + ">")
+			b.WriteString(XmlFromObject(val))
+			b.WriteString("</" + k + ">")
+		case []interface{}:
+			for _, item := range val {
+				b.WriteString("<" + k + ">")
+				if m, ok := item.(map[string]interface{}); ok {
+					b.WriteString(XmlFromObject(m))
+				} else {
+					b.WriteString(XmlFromObject(m))
+				}
+				b.WriteString("</" + k + ">")
+			}
+		default:
+			b.WriteString(fmt.Sprintf("<%s>%v</%s>", k, val, k))
+		}
 	}
 
-	return doc
-}
-
-func EnforceSingleContentType(newContentType string) {
-	newContentType = strings.TrimSpace(newContentType)
-
-	// Remove old 'Content-Type' header
-	Headers = slices.DeleteFunc(Headers, func(h string) bool {
-		return strings.HasPrefix(strings.ToLower(h), "content-type:")
-	})
-
-	Headers = append(Headers, "Content-Type: "+newContentType)
-
-	// Remove empty elements to avoid repetitions of "-H ''"
-	Headers = slices.DeleteFunc(Headers, func(h string) bool {
-		return strings.TrimSpace(h) == ""
-	})
+	return b.String()
 }
