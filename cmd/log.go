@@ -34,12 +34,14 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 	}
 
 	if outfile != "" {
-		file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+		var err error
+		file, err = os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
 			fmt.Println("Output file does not exist or cannot be created")
 			os.Exit(1)
 		}
 
+		defer file.Close()
 		tempLogger.SetOutput(file)
 	}
 
@@ -54,52 +56,53 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 	}
 
 	if verbose {
-		if sc != 200 {
-			if sc == 401 || sc == 403 {
-				logVerboseUnauth(sc, target, method, errorMsg, response, tempLogger)
-			} else if sc == 301 || sc == 302 {
-				logVerboseRedirect(sc, target, method, response, tempLogger)
-			} else if sc == 0 {
-				logVerboseBad(sc, target, method, response, tempLogger)
-			} else if sc == 404 {
-				logNotFound(sc, target, method, errorMsg, tempLogger)
-			} else if sc == 1 {
-				logDangerous(target, method, tempLogger)
-			} else if sc == 8899 {
-				logVerboseJSON(specTitle, specDescription)
-			} else {
-				logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
-			}
-		} else {
+		switch sc {
+		case 0:
+			logVerboseBad(sc, target, method, response, tempLogger)
+		case 1:
+			logDangerous(target, method, tempLogger)
+		case 200:
 			logVerboseAccessible(sc, target, method, response, tempLogger)
+		case 301:
+			logVerboseRedirect(sc, target, method, response, tempLogger)
+		case 302:
+			logVerboseRedirect(sc, target, method, response, tempLogger)
+		case 401:
+			logVerboseUnauth(sc, target, method, errorMsg, response, tempLogger)
+		case 403:
+			logVerboseUnauth(sc, target, method, errorMsg, response, tempLogger)
+		case 404:
+			logNotFound(sc, target, method, errorMsg, tempLogger)
+		case 8899:
+			logVerboseJSON(specTitle, specDescription)
+		default:
+			logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
 		}
 	} else {
-		if sc != 200 {
-			if sc == 401 || sc == 403 {
-				logUnauth(sc, target, method, errorMsg, tempLogger)
-			} else if sc == 301 || sc == 302 {
-				logRedirect(sc, target, method, tempLogger)
-			} else if sc == 0 {
-				logBad(sc, target, method, tempLogger)
-			} else if sc == 404 {
-				logNotFound(sc, target, method, errorMsg, tempLogger)
-			} else if sc == 1 {
-				logDangerous(target, method, tempLogger)
-			} else if sc == 8899 {
-				logJSON(specTitle, specDescription)
-			} else {
-				logManual(sc, target, method, errorMsg, tempLogger)
-			}
-		} else {
-			if sc == 8899 {
-				logJSON(specTitle, specDescription)
-			} else {
-				logAccessible(sc, target, method, tempLogger)
-			}
+		switch sc {
+		case 0:
+			logBad(sc, target, method, tempLogger)
+		case 1:
+			logDangerous(target, method, tempLogger)
+		case 200:
+			logAccessible(sc, target, method, tempLogger)
+		case 301:
+			logRedirect(sc, target, method, tempLogger)
+		case 302:
+			logRedirect(sc, target, method, tempLogger)
+		case 401:
+			logUnauth(sc, target, method, errorMsg, tempLogger)
+		case 403:
+			logUnauth(sc, target, method, errorMsg, tempLogger)
+		case 404:
+			logNotFound(sc, target, method, errorMsg, tempLogger)
+		case 8899:
+			logJSON(specTitle, specDescription)
+		default:
+			logManual(sc, target, method, errorMsg, tempLogger)
 		}
 	}
 	responsePreviewLength = tempResponsePreviewLength
-	file.Close()
 }
 
 func logAccessible(status int, target, method string, logger *log.Logger) {
