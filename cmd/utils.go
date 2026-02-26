@@ -21,7 +21,8 @@ var jsonVerboseResultArray []VerboseResult
 var specTitle string
 var specDescription string
 var externalRefCache = make(map[string]map[string]interface{})
-var specBaseDir string // Directory of the loaded spec file for resolving external refs
+var specToFilePath = make(map[*interface{}]string) // Maps external spec pointers to their file paths
+var specBaseDir string                             // Directory of the loaded spec file for resolving external refs
 
 type SchemaNode struct {
 	Type                 string
@@ -90,10 +91,12 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 								// Handle parameter-level $ref (e.g., #/parameters/... or #/components/parameters/...)
 								if pMap, ok := p.(map[string]interface{}); ok {
 									// Check if the parameter itself is a reference
+									paramContextSpec := spec
 									if ref, hasRef := pMap["$ref"].(string); hasRef {
-										resolved := ResolveRef(spec, ref)
+										resolved, contextSpec := ResolveRefWithContext(spec, ref)
 										if resolved != nil {
 											pMap = resolved
+											paramContextSpec = contextSpec
 										}
 									}
 
@@ -103,7 +106,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 										// Handle schema-based parameters (OpenAPI v3 and some v2)
 										var handledAsObject bool // Track if we already handled this as an object
 										if schema, ok := pMap["schema"].(map[string]interface{}); ok {
-											expanded := ExpandSchema(spec, schema, map[string]bool{}, spec)
+											expanded := ExpandSchema(spec, schema, map[string]bool{}, paramContextSpec)
 											if expanded.Type == "object" || len(expanded.Properties) > 0 {
 												// For object schemas, generate full example and serialize
 												example := GenerateExample(expanded)
@@ -197,10 +200,12 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 						// Extracts the expected parameters from the requestBody object
 						if reqBody, ok := opMap["requestBody"].(map[string]interface{}); ok {
 							// Handle requestBody-level $ref (e.g., #/components/requestBodies/...)
+							reqBodyContextSpec := spec
 							if ref, hasRef := reqBody["$ref"].(string); hasRef {
-								resolved := ResolveRef(spec, ref)
+								resolved, contextSpec := ResolveRefWithContext(spec, ref)
 								if resolved != nil {
 									reqBody = resolved
+									reqBodyContextSpec = contextSpec
 								}
 							}
 
@@ -214,7 +219,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 
 									if ct, ok := contentTypes[cType].(map[string]interface{}); ok {
 										if schema, ok := ct["schema"].(map[string]interface{}); ok {
-											expanded := ExpandSchema(spec, schema, map[string]bool{}, spec)
+											expanded := ExpandSchema(spec, schema, map[string]bool{}, reqBodyContextSpec)
 											example := GenerateExample(expanded)
 
 											if cType == "application/json" {
@@ -556,7 +561,20 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 				apiTarget = host
 			} else {
 				if host != "" {
-					apiTarget = u.Scheme + "://" + host
+					scheme := u.Scheme
+					// If scheme is empty (e.g., local file), try to get from spec's schemes array
+					if scheme == "" {
+						if schemes, ok := spec["schemes"].([]interface{}); ok && len(schemes) > 0 {
+							if s, ok := schemes[0].(string); ok {
+								scheme = s
+							}
+						}
+					}
+					// Default to https if still no scheme
+					if scheme == "" {
+						scheme = "https"
+					}
+					apiTarget = scheme + "://" + host
 				}
 			}
 		} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
@@ -618,13 +636,25 @@ func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} 
 func ResolveRefWithContext(spec map[string]interface{}, ref string) (map[string]interface{}, map[string]interface{}) {
 	// Handle external references (e.g., "./schemas/user.yaml#/User")
 	if !strings.HasPrefix(ref, "#") {
-		resolved := ResolveExternalRef(ref)
+		// Determine the base directory for resolving this external ref
+		baseDir := specBaseDir
+		// Check if the current spec is an external file
+		for cachedPath, cachedSpec := range externalRefCache {
+			if fmt.Sprintf("%p", cachedSpec) == fmt.Sprintf("%p", spec) {
+				// This spec is an external file, use its directory as base
+				baseDir = filepath.Dir(cachedPath)
+				break
+			}
+		}
+
+		resolved := ResolveExternalRef(ref, baseDir)
 		// For external refs, the resolved schema's context is itself
 		// (nested refs within it should be resolved in the external doc)
 		if resolved != nil {
 			// Try to get the cached external spec as context
 			filePath := strings.SplitN(ref, "#", 2)[0]
-			if externalSpec, exists := externalRefCache[filepath.Clean(filepath.Join(specBaseDir, filePath))]; exists {
+			fullPath := filepath.Clean(filepath.Join(baseDir, filePath))
+			if externalSpec, exists := externalRefCache[fullPath]; exists {
 				return resolved, externalSpec
 			}
 		}
@@ -647,7 +677,7 @@ func ResolveRefWithContext(spec map[string]interface{}, ref string) (map[string]
 	return resolved, spec
 }
 
-func ResolveExternalRef(ref string) map[string]interface{} {
+func ResolveExternalRef(ref string, baseDir string) map[string]interface{} {
 	// Parse external reference format: "<file_path>#<json_pointer>"
 	parts := strings.SplitN(ref, "#", 2)
 	if len(parts) < 1 {
@@ -660,8 +690,8 @@ func ResolveExternalRef(ref string) map[string]interface{} {
 		jsonPointer = parts[1]
 	}
 
-	// Resolve path relative to spec base directory
-	filePath := filepath.Join(specBaseDir, relativePath)
+	// Resolve path relative to the provided base directory
+	filePath := filepath.Join(baseDir, relativePath)
 	filePath = filepath.Clean(filePath)
 
 	// Check cache first
