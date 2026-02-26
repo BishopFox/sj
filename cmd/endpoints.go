@@ -29,7 +29,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 		log.Infof("Gathering endpoints.\n\n")
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
 			GenerateRequests(bodyBytes, client)
 		} else {
 			specFile, err := os.Open(localFile)
