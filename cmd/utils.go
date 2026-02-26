@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -20,6 +21,7 @@ var jsonVerboseResultArray []VerboseResult
 var specTitle string
 var specDescription string
 var externalRefCache = make(map[string]map[string]interface{})
+var specBaseDir string // Directory of the loaded spec file for resolving external refs
 
 type SchemaNode struct {
 	Type                 string
@@ -99,24 +101,39 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 										in := pMap["in"].(string)
 
 										// Handle schema-based parameters (OpenAPI v3 and some v2)
+										var handledAsObject bool // Track if we already handled this as an object
 										if schema, ok := pMap["schema"].(map[string]interface{}); ok {
-											expanded := ExpandSchema(spec, schema, map[string]bool{})
-
-											// Generate example value from expanded schema
+											expanded := ExpandSchema(spec, schema, map[string]bool{}, spec)
 											if expanded.Type == "object" || len(expanded.Properties) > 0 {
 												// For object schemas, generate full example and serialize
 												example := GenerateExample(expanded)
 												if exampleMap, ok := example.(map[string]interface{}); ok {
-													for propertyItem, propertyValue := range exampleMap {
-														pValue = fmt.Sprintf("%v", propertyValue)
-														if strings.Contains(curl, "-d '") {
-															bodyData += fmt.Sprintf("&%s=%s", propertyItem, pValue)
-															curl = strings.TrimSuffix(curl, "'")
-															curl += fmt.Sprintf("&%s=%s'", propertyItem, pValue)
-														} else {
-															bodyData += fmt.Sprintf("%s=%s", propertyItem, pValue)
-															curl += fmt.Sprintf(" -d '%s=%s'", propertyItem, pValue)
+													// Handle based on parameter location
+													if in == "query" {
+														// Query params with object schema: add each property to query string
+														for propertyItem, propertyValue := range exampleMap {
+															pVal := fmt.Sprintf("%v", propertyValue)
+															if strings.Contains(curl, "?") || strings.Contains(targetURL, "?") {
+																targetURL += fmt.Sprintf("&%s=%s", propertyItem, pVal)
+															} else {
+																targetURL += fmt.Sprintf("?%s=%s", propertyItem, pVal)
+															}
 														}
+														handledAsObject = true
+													} else if in == "body" {
+														// Body params with object schema: add each property to body data
+														for propertyItem, propertyValue := range exampleMap {
+															pVal := fmt.Sprintf("%v", propertyValue)
+															if strings.Contains(curl, "-d '") {
+																bodyData += fmt.Sprintf("&%s=%s", propertyItem, pVal)
+																curl = strings.TrimSuffix(curl, "'")
+																curl += fmt.Sprintf("&%s=%s'", propertyItem, pVal)
+															} else {
+																bodyData += fmt.Sprintf("%s=%s", propertyItem, pVal)
+																curl += fmt.Sprintf(" -d '%s=%s'", propertyItem, pVal)
+															}
+														}
+														handledAsObject = true
 													}
 												}
 											} else {
@@ -132,7 +149,10 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 											}
 										} else if pType, ok := pMap["type"].(string); ok {
 											// Direct type without schema (Swagger v2 style)
-											if pType == "string" && name != "version" {
+											// Check for default value first
+											if defaultVal := pMap["default"]; defaultVal != nil {
+												pValue = fmt.Sprintf("%v", defaultVal)
+											} else if pType == "string" && name != "version" {
 												pValue = testString
 											} else {
 												pValue = "1"
@@ -145,9 +165,8 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 											pValue = "1"
 										}
 
-										// Only process query/path/header parameters with the switch
-										// Body parameters with object schemas were already handled above
-										if !(in == "body" && len(pValue) == 0) {
+										// Only process parameters that weren't already handled as objects
+										if !handledAsObject {
 											switch in {
 											case "query":
 												if strings.Contains(curl, "?") || strings.Contains(targetURL, "?") {
@@ -195,7 +214,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 
 									if ct, ok := contentTypes[cType].(map[string]interface{}); ok {
 										if schema, ok := ct["schema"].(map[string]interface{}); ok {
-											expanded := ExpandSchema(spec, schema, map[string]bool{})
+											expanded := ExpandSchema(spec, schema, map[string]bool{}, spec)
 											example := GenerateExample(expanded)
 
 											if cType == "application/json" {
@@ -347,6 +366,7 @@ func ExpandSchema(
 	spec map[string]interface{},
 	schema map[string]interface{},
 	visited map[string]bool,
+	contextSpec map[string]interface{}, // The spec document this schema belongs to (for resolving nested refs)
 ) *SchemaNode {
 	if schema == nil {
 		return &SchemaNode{Type: "object"}
@@ -358,11 +378,13 @@ func ExpandSchema(
 		}
 		visited[ref] = true
 
-		resolved := ResolveRef(spec, ref)
+		// Resolve ref in the context spec (could be external)
+		resolved, resolvedSpec := ResolveRefWithContext(contextSpec, ref)
 		if resolved == nil {
 			return &SchemaNode{Type: "object"}
 		}
-		return ExpandSchema(spec, resolved, visited)
+		// Continue expansion using the resolved spec as context
+		return ExpandSchema(spec, resolved, visited, resolvedSpec)
 	}
 
 	node := &SchemaNode{
@@ -396,19 +418,19 @@ func ExpandSchema(
 	if props, ok := schema["properties"].(map[string]interface{}); ok {
 		for name, raw := range props {
 			if m, ok := raw.(map[string]interface{}); ok {
-				node.Properties[name] = ExpandSchema(spec, m, visited)
+				node.Properties[name] = ExpandSchema(spec, m, visited, contextSpec)
 			}
 		}
 	}
 
 	if items, ok := schema["items"].(map[string]interface{}); ok {
-		node.Items = ExpandSchema(spec, items, visited)
+		node.Items = ExpandSchema(spec, items, visited, contextSpec)
 	}
 
 	// Handle additionalProperties
 	if addProps, ok := schema["additionalProperties"]; ok {
 		if addPropsMap, ok := addProps.(map[string]interface{}); ok {
-			node.AdditionalProperties = ExpandSchema(spec, addPropsMap, visited)
+			node.AdditionalProperties = ExpandSchema(spec, addPropsMap, visited, contextSpec)
 		}
 	}
 
@@ -417,7 +439,7 @@ func ExpandSchema(
 		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}, Required: map[string]bool{}}
 		for _, entry := range allOf {
 			if m, ok := entry.(map[string]interface{}); ok {
-				sub := ExpandSchema(spec, m, visited)
+				sub := ExpandSchema(spec, m, visited, contextSpec)
 				for k, v := range sub.Properties {
 					merged.Properties[k] = v
 				}
@@ -433,7 +455,7 @@ func ExpandSchema(
 	if oneOf, ok := schema["oneOf"].([]interface{}); ok {
 		for _, entry := range oneOf {
 			if m, ok := entry.(map[string]interface{}); ok {
-				node.OneOf = append(node.OneOf, ExpandSchema(spec, m, visited))
+				node.OneOf = append(node.OneOf, ExpandSchema(spec, m, visited, contextSpec))
 			}
 		}
 	}
@@ -442,7 +464,7 @@ func ExpandSchema(
 	if anyOf, ok := schema["anyOf"].([]interface{}); ok {
 		for _, entry := range anyOf {
 			if m, ok := entry.(map[string]interface{}); ok {
-				node.AnyOf = append(node.AnyOf, ExpandSchema(spec, m, visited))
+				node.AnyOf = append(node.AnyOf, ExpandSchema(spec, m, visited, contextSpec))
 			}
 		}
 	}
@@ -588,9 +610,25 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 }
 
 func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {
+	resolved, _ := ResolveRefWithContext(spec, ref)
+	return resolved
+}
+
+// ResolveRefWithContext resolves a reference and returns both the resolved schema and the spec it came from
+func ResolveRefWithContext(spec map[string]interface{}, ref string) (map[string]interface{}, map[string]interface{}) {
 	// Handle external references (e.g., "./schemas/user.yaml#/User")
 	if !strings.HasPrefix(ref, "#") {
-		return ResolveExternalRef(ref)
+		resolved := ResolveExternalRef(ref)
+		// For external refs, the resolved schema's context is itself
+		// (nested refs within it should be resolved in the external doc)
+		if resolved != nil {
+			// Try to get the cached external spec as context
+			filePath := strings.SplitN(ref, "#", 2)[0]
+			if externalSpec, exists := externalRefCache[filepath.Clean(filepath.Join(specBaseDir, filePath))]; exists {
+				return resolved, externalSpec
+			}
+		}
+		return resolved, spec
 	}
 
 	parts := strings.Split(ref[2:], "/")
@@ -599,13 +637,14 @@ func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} 
 	for _, p := range parts {
 		m, ok := cur.(map[string]interface{})
 		if !ok {
-			return nil
+			return nil, spec
 		}
 		cur = m[p]
 	}
 
 	resolved, _ := cur.(map[string]interface{})
-	return resolved
+	// Internal refs stay in the same spec context
+	return resolved, spec
 }
 
 func ResolveExternalRef(ref string) map[string]interface{} {
@@ -615,11 +654,15 @@ func ResolveExternalRef(ref string) map[string]interface{} {
 		return nil
 	}
 
-	filePath := parts[0]
+	relativePath := parts[0]
 	var jsonPointer string
 	if len(parts) == 2 {
 		jsonPointer = parts[1]
 	}
+
+	// Resolve path relative to spec base directory
+	filePath := filepath.Join(specBaseDir, relativePath)
+	filePath = filepath.Clean(filePath)
 
 	// Check cache first
 	if cached, exists := externalRefCache[filePath]; exists {

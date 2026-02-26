@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -64,6 +65,13 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			specFile, err := os.Open(localFile)
 			if err != nil {
 				die("Error opening file: %v", err)
+			}
+			// Set the base directory for resolving external refs
+			specBaseDir = filepath.Dir(localFile)
+			if specBaseDir == "." {
+				if absPath, err := filepath.Abs(localFile); err == nil {
+					specBaseDir = filepath.Dir(absPath)
+				}
 			}
 
 			bodyBytes, _ = io.ReadAll(specFile)
