@@ -225,7 +225,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 											if cType == "application/json" {
 												bodyBytes, err := json.Marshal(example)
 												if err == nil {
-													curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'\"", bodyBytes)
+												curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'", bodyBytes)
 												}
 											}
 											if cType == "application/xml" || cType == "text/xml" {
@@ -603,8 +603,14 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 							} else if serverURL == "/" {
 								basePath = ""
 							} else {
-								basePath = serverURL
-								apiTarget = u.Scheme + "://" + u.Host
+								// Relative URL - need a base
+								if u.Scheme != "" && u.Host != "" {
+									basePath = serverURL
+									apiTarget = u.Scheme + "://" + u.Host
+								} else {
+									// Local file with relative server URL - cannot construct full URL
+									log.Fatalf("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
+								}
 							}
 						}
 					}
@@ -615,7 +621,12 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 
 	// Use the original host at the target if no server found from specification.
 	if apiTarget == "" {
-		apiTarget = u.Scheme + "://" + u.Host
+		if u.Scheme != "" && u.Host != "" {
+			apiTarget = u.Scheme + "://" + u.Host
+		} else {
+			// No server info and no URL to parse - require user to specify target
+			log.Fatal("No server information found in spec and no URL provided. Use -T to specify target server.")
+		}
 	}
 
 	if os.Args[1] != "endpoints" {
