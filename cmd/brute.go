@@ -166,6 +166,9 @@ func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
 				regexPattern := regexp.MustCompile(`(?s)let\s+(\w+)\s*=\s*({.*?});`)
 				matches := regexPattern.FindAllStringSubmatch(bodyString, -1)
 				for _, match := range matches {
+					if len(match) < 3 {
+						continue
+					}
 					jsonContent := match[2]
 					checkSpec := UnmarshalSpec([]byte(jsonContent))
 					if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
