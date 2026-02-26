@@ -20,6 +20,7 @@ var (
 	avoidDangerousRequests string
 	contentType            string
 	dangerousStrings       []string = []string{"add", "block", "build", "buy", "change", "clear", "create", "delete", "deploy", "destroy", "drop", "edit", "emergency", "erase", "execute", "insert", "modify", "order", "overwrite", "pause", "purchase", "rebuild", "remove", "replace", "reset", "restart", "revoke", "run", "sell", "send", "set", "start", "stop", "update", "upload", "write"}
+	depth                  int      = 0
 	Headers                []string
 	requestStatus          int
 	riskSurveyed           bool = false
@@ -163,13 +164,15 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
 
-	if (resp.StatusCode == 301 || resp.StatusCode == 302) && strings.Contains(bodyString, "<html>") {
+	if (resp.StatusCode == 301 || resp.StatusCode == 302) && strings.Contains(bodyString, "<html>") && depth < 10 {
+		depth += 1
 		redirect, _ := resp.Location()
 		bodyBytes, bodyString, requestStatus = MakeRequest(client, method, redirect.Scheme+"://"+redirect.Host+redirect.Path, timeout, reqData)
 		return bodyBytes, bodyString, requestStatus
 	}
 
 	requestStatus = resp.StatusCode
+	depth = 0
 
 	return bodyBytes, bodyString, requestStatus
 }
