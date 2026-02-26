@@ -37,7 +37,7 @@ $ export PATH=$PATH:~/go/bin
 > Use the `automate` command to send a series of requests to each defined endpoint and analyze the status code of each response.
 
 ```bash
-go run . automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080               
+$ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080               
 
 Gathering API details.
 Title: Swagger Petstore
