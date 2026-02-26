@@ -642,3 +642,82 @@ func TestOpenAPIv3AbsoluteServerURLWithTargetFlag(t *testing.T) {
 		t.Errorf("Expected full path '%s', got '%s'", expectedPath, fullPath)
 	}
 }
+
+func TestOpenAPIv3AbsoluteServerURLWithoutTargetFlag(t *testing.T) {
+	oldSpecBaseDir := specBaseDir
+	oldSwaggerURL := swaggerURL
+	oldAPITarget := apiTarget
+	oldBasePath := basePath
+	defer func() {
+		specBaseDir = oldSpecBaseDir
+		swaggerURL = oldSwaggerURL
+		apiTarget = oldAPITarget
+		basePath = oldBasePath
+	}()
+
+	specPath := filepath.Join("..", "tests", "test_spec_v3.yaml")
+	absPath, _ := filepath.Abs(specPath)
+	specBaseDir = filepath.Dir(absPath)
+
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Skipf("Test spec not found: %v", err)
+		return
+	}
+
+	spec := SafelyUnmarshalSpec(data)
+	if spec == nil {
+		t.Fatal("Failed to unmarshal spec")
+	}
+
+	swaggerURL = ""
+	apiTarget = ""
+	basePath = ""
+
+	if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
+		if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
+			if srv, ok := servers[0].(map[string]interface{}); ok {
+				if serverURL, ok := srv["url"].(string); ok && strings.Contains(serverURL, "://") {
+					if parsedURL, err := url.Parse(serverURL); err == nil {
+						basePath = normalizeBasePath(parsedURL.Path)
+						if apiTarget == "" {
+							apiTarget = parsedURL.Scheme + "://" + parsedURL.Host
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if apiTarget != "https://api.example.com" {
+		t.Errorf("Expected apiTarget 'https://api.example.com', got '%s'", apiTarget)
+	}
+	if basePath != "/v1" {
+		t.Errorf("Expected basePath '/v1', got '%s'", basePath)
+	}
+	if endpointPath := basePath + "/users"; endpointPath != "/v1/users" {
+		t.Errorf("Expected endpoints path '/v1/users', got '%s'", endpointPath)
+	}
+}
+
+func TestNormalizeBasePath(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "/", want: ""},
+		{in: " /v1/ ", want: "/v1"},
+		{in: "/v1/", want: "/v1"},
+		{in: "/v1", want: "/v1"},
+		{in: "v1/", want: "/v1"},
+		{in: "v1", want: "/v1"},
+	}
+
+	for _, tc := range cases {
+		got := normalizeBasePath(tc.in)
+		if got != tc.want {
+			t.Errorf("normalizeBasePath(%q): expected %q, got %q", tc.in, tc.want, got)
+		}
+	}
+}

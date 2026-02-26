@@ -551,10 +551,8 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 		// Swagger (v2)
 		host, _ := spec["host"].(string)
 		bp, _ := spec["basePath"].(string)
-		if bp == "/" {
-			basePath = ""
-		} else if bp != "" {
-			basePath = bp
+		if bp != "" {
+			basePath = normalizeBasePath(bp)
 		}
 
 			// Only set apiTarget from spec if -T flag wasn't used
@@ -600,22 +598,20 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 				}
 			} else {
 				if srv, ok := servers[0].(map[string]interface{}); ok {
-					if serverURL, ok := srv["url"].(string); ok {
-						if strings.Contains(serverURL, "://") {
-							// Full URL in server
-							if apiTarget == "" {
-								apiTarget = serverURL
-							} else {
-								// -T overrides host, but server path should still be preserved.
-								if parsedServerURL, err := url.Parse(serverURL); err == nil && parsedServerURL.Path != "" && parsedServerURL.Path != "/" {
-									basePath = parsedServerURL.Path
+						if serverURL, ok := srv["url"].(string); ok {
+							if strings.Contains(serverURL, "://") {
+								// Full URL in server
+								if parsedServerURL, err := url.Parse(serverURL); err == nil {
+									basePath = normalizeBasePath(parsedServerURL.Path)
+									if apiTarget == "" {
+										apiTarget = parsedServerURL.Scheme + "://" + parsedServerURL.Host
+									}
 								}
-							}
-						} else if serverURL == "/" {
+							} else if serverURL == "/" {
 							basePath = ""
 						} else {
 							// Relative URL - this becomes the basePath
-							basePath = serverURL
+							basePath = normalizeBasePath(serverURL)
 							// Only try to construct apiTarget if -T wasn't used
 							if apiTarget == "" {
 								if u.Scheme != "" && u.Host != "" {
@@ -659,6 +655,21 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {
 	resolved, _ := ResolveRefWithContext(spec, ref)
 	return resolved
+}
+
+func normalizeBasePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	path = strings.TrimRight(path, "/")
+	if path == "/" {
+		return ""
+	}
+	return path
 }
 
 // ResolveRefWithContext resolves a reference and returns both the resolved schema and the spec it came from
