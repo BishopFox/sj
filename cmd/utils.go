@@ -19,15 +19,19 @@ var jsonResultArray []Result
 var jsonVerboseResultArray []VerboseResult
 var specTitle string
 var specDescription string
+var externalRefCache = make(map[string]map[string]interface{})
 
 type SchemaNode struct {
-	Type       string
-	Properties map[string]*SchemaNode
-	Items      *SchemaNode
-	Required   map[string]bool
-	Enum       []interface{}
-	Example    interface{}
-	Ref        string
+	Type                 string
+	Properties           map[string]*SchemaNode
+	Items                *SchemaNode
+	Required             map[string]bool
+	Enum                 []interface{}
+	Example              interface{}
+	Ref                  string
+	OneOf                []*SchemaNode
+	AnyOf                []*SchemaNode
+	AdditionalProperties *SchemaNode
 }
 
 func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
@@ -79,97 +83,91 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 						// Extracts the expected parameters from the parameters object
 						if params, ok := opMap["parameters"].([]interface{}); ok {
 							for _, p := range params {
-								var pType string
 								var pValue string
+
+								// Handle parameter-level $ref (e.g., #/parameters/... or #/components/parameters/...)
 								if pMap, ok := p.(map[string]interface{}); ok {
+									// Check if the parameter itself is a reference
+									if ref, hasRef := pMap["$ref"].(string); hasRef {
+										resolved := ResolveRef(spec, ref)
+										if resolved != nil {
+											pMap = resolved
+										}
+									}
+
 									if name, ok := pMap["name"].(string); ok {
 										in := pMap["in"].(string)
+
+										// Handle schema-based parameters (OpenAPI v3 and some v2)
 										if schema, ok := pMap["schema"].(map[string]interface{}); ok {
-											if schema["type"] != nil {
-												pType = schema["type"].(string)
-												// Attempt to prevent version strings from being improperly supplied (i.e. v1)
-												if pType == "string" && pMap["name"] != "version" {
-													pValue = testString
-												} else {
-													pValue = "1"
-												}
-											} else if schema["$ref"] != nil {
-												ref := schema["$ref"].(string)
-												if defs, ok := spec["definitions"].(map[string]interface{}); ok {
-													schemaName := strings.TrimPrefix(ref, "#/definitions/")
-													if s, ok := defs[schemaName].(map[string]interface{}); ok {
-														if properties, ok := s["properties"].(map[string]interface{}); ok {
-															for propertyItem := range properties {
-																var pValue string
-																if propertyName, ok := properties[propertyItem].(map[string]interface{}); ok {
-																	if exampleValue, ok := propertyName["example"]; ok {
-																		switch ex := exampleValue.(type) {
-																		case string:
-																			pValue = exampleValue.(string)
-																		case []interface{}:
-																			if len(ex) > 0 {
-																				if v, ok := ex[0].(string); ok {
-																					pValue = v
-																				} else {
-																					pValue = "1"
-																				}
-																			}
-																		default:
-																			pValue = "1"
-																		}
-																	} else if propertyType, ok := propertyName["type"].(string); ok {
-																		// Attempt to prevent version strings from being improperly supplied (i.e. v1)
-																		if propertyType == "string" && propertyName["name"] != "version" {
-																			pValue = testString
-																		} else {
-																			pValue = "1"
-																		}
+											expanded := ExpandSchema(spec, schema, map[string]bool{})
 
-																	}
-
-																	if strings.Contains(curl, "-d '") {
-																		bodyData += fmt.Sprintf("&%s=%s", propertyItem, pValue)
-																		curl = strings.TrimSuffix(curl, "'")
-																		curl += fmt.Sprintf("&%s=%s'", propertyItem, pValue)
-																	} else {
-																		bodyData += fmt.Sprintf("%s=%s", propertyItem, pValue)
-																		curl += fmt.Sprintf(" -d '%s=%s'", propertyItem, pValue)
-																	}
-																}
-															}
+											// Generate example value from expanded schema
+											if expanded.Type == "object" || len(expanded.Properties) > 0 {
+												// For object schemas, generate full example and serialize
+												example := GenerateExample(expanded)
+												if exampleMap, ok := example.(map[string]interface{}); ok {
+													for propertyItem, propertyValue := range exampleMap {
+														pValue = fmt.Sprintf("%v", propertyValue)
+														if strings.Contains(curl, "-d '") {
+															bodyData += fmt.Sprintf("&%s=%s", propertyItem, pValue)
+															curl = strings.TrimSuffix(curl, "'")
+															curl += fmt.Sprintf("&%s=%s'", propertyItem, pValue)
+														} else {
+															bodyData += fmt.Sprintf("%s=%s", propertyItem, pValue)
+															curl += fmt.Sprintf(" -d '%s=%s'", propertyItem, pValue)
 														}
 													}
 												}
+											} else {
+												// For primitive types, generate simple value
+												exampleValue := GenerateExample(expanded)
+												if expanded.Type == "string" && name != "version" {
+													pValue = testString
+												} else if exampleValue != nil {
+													pValue = fmt.Sprintf("%v", exampleValue)
+												} else {
+													pValue = "1"
+												}
 											}
-
 										} else if pType, ok := pMap["type"].(string); ok {
-											// Attempt to prevent version strings from being improperly supplied (i.e. v1)
-											if pType == "string" && pMap["name"] != "version" {
+											// Direct type without schema (Swagger v2 style)
+											if pType == "string" && name != "version" {
 												pValue = testString
 											} else {
 												pValue = "1"
 											}
+										} else if defaultVal := pMap["default"]; defaultVal != nil {
+											// Use default value if no type or schema
+											pValue = fmt.Sprintf("%v", defaultVal)
+										} else {
+											// Fallback to generic value
+											pValue = "1"
 										}
 
-										switch in {
-										case "query":
-											if strings.Contains(curl, "?") || strings.Contains(targetURL, "?") {
-												targetURL += fmt.Sprintf("&%s=%s", name, pValue)
-											} else {
-												targetURL += fmt.Sprintf("?%s=%s", name, pValue)
-											}
-										case "path":
-											targetURL = strings.Replace(targetURL, "{"+name+"}", pValue, 1)
-										case "header":
-											curl += fmt.Sprintf(" -H \"%s: %s\"", name, pValue)
-										case "body":
-											if strings.Contains(curl, "-d '") {
-												bodyData += fmt.Sprintf("&%s=%s", name, pValue)
-												curl = strings.TrimSuffix(curl, "'")
-												curl += fmt.Sprintf("&%s=%s'", name, pValue)
-											} else {
-												bodyData += fmt.Sprintf("%s=%s", name, pValue)
-												curl += fmt.Sprintf(" -d '%s=%s'", name, pValue)
+										// Only process query/path/header parameters with the switch
+										// Body parameters with object schemas were already handled above
+										if !(in == "body" && len(pValue) == 0) {
+											switch in {
+											case "query":
+												if strings.Contains(curl, "?") || strings.Contains(targetURL, "?") {
+													targetURL += fmt.Sprintf("&%s=%s", name, pValue)
+												} else {
+													targetURL += fmt.Sprintf("?%s=%s", name, pValue)
+												}
+											case "path":
+												targetURL = strings.Replace(targetURL, "{"+name+"}", pValue, 1)
+											case "header":
+												curl += fmt.Sprintf(" -H \"%s: %s\"", name, pValue)
+											case "body":
+												if strings.Contains(curl, "-d '") {
+													bodyData += fmt.Sprintf("&%s=%s", name, pValue)
+													curl = strings.TrimSuffix(curl, "'")
+													curl += fmt.Sprintf("&%s=%s'", name, pValue)
+												} else {
+													bodyData += fmt.Sprintf("%s=%s", name, pValue)
+													curl += fmt.Sprintf(" -d '%s=%s'", name, pValue)
+												}
 											}
 										}
 									}
@@ -179,6 +177,14 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 
 						// Extracts the expected parameters from the requestBody object
 						if reqBody, ok := opMap["requestBody"].(map[string]interface{}); ok {
+							// Handle requestBody-level $ref (e.g., #/components/requestBodies/...)
+							if ref, hasRef := reqBody["$ref"].(string); hasRef {
+								resolved := ResolveRef(spec, ref)
+								if resolved != nil {
+									reqBody = resolved
+								}
+							}
+
 							if contentTypes, ok := reqBody["content"].(map[string]interface{}); ok {
 								for cType := range contentTypes {
 									if contentType == "" {
@@ -204,10 +210,27 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, xml)
 												}
 											}
+											if cType == "application/x-www-form-urlencoded" || cType == "multipart/form-data" {
+												if obj, ok := example.(map[string]interface{}); ok {
+													var formParts []string
+													for k, v := range obj {
+														formParts = append(formParts, fmt.Sprintf("%s=%v", k, v))
+													}
+													formData := strings.Join(formParts, "&")
+													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, formData)
+												}
+											}
 										}
 									}
 								}
 							}
+						}
+
+						// Update the curl command with the final targetURL (which may have been modified with query params)
+						// Extract and replace the URL in quotes
+						curlParts := strings.SplitN(curl, "\"", 3)
+						if len(curlParts) >= 3 {
+							curl = curlParts[0] + "\"" + targetURL + "\"" + curlParts[2]
 						}
 
 						logURL, parseErr := url.Parse(targetURL)
@@ -351,6 +374,25 @@ func ExpandSchema(
 		node.Type = t
 	}
 
+	// Handle enum values
+	if enum, ok := schema["enum"].([]interface{}); ok {
+		node.Enum = enum
+	}
+
+	// Handle example values
+	if example := schema["example"]; example != nil {
+		node.Example = example
+	}
+
+	// Populate required fields
+	if required, ok := schema["required"].([]interface{}); ok {
+		for _, r := range required {
+			if fieldName, ok := r.(string); ok {
+				node.Required[fieldName] = true
+			}
+		}
+	}
+
 	if props, ok := schema["properties"].(map[string]interface{}); ok {
 		for name, raw := range props {
 			if m, ok := raw.(map[string]interface{}); ok {
@@ -363,23 +405,72 @@ func ExpandSchema(
 		node.Items = ExpandSchema(spec, items, visited)
 	}
 
+	// Handle additionalProperties
+	if addProps, ok := schema["additionalProperties"]; ok {
+		if addPropsMap, ok := addProps.(map[string]interface{}); ok {
+			node.AdditionalProperties = ExpandSchema(spec, addPropsMap, visited)
+		}
+	}
+
+	// Handle allOf (merge all schemas)
 	if allOf, ok := schema["allOf"].([]interface{}); ok {
-		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}}
+		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}, Required: map[string]bool{}}
 		for _, entry := range allOf {
 			if m, ok := entry.(map[string]interface{}); ok {
 				sub := ExpandSchema(spec, m, visited)
 				for k, v := range sub.Properties {
 					merged.Properties[k] = v
 				}
+				for k, v := range sub.Required {
+					merged.Required[k] = v
+				}
 			}
 		}
 		return merged
+	}
+
+	// Handle oneOf (expand all options)
+	if oneOf, ok := schema["oneOf"].([]interface{}); ok {
+		for _, entry := range oneOf {
+			if m, ok := entry.(map[string]interface{}); ok {
+				node.OneOf = append(node.OneOf, ExpandSchema(spec, m, visited))
+			}
+		}
+	}
+
+	// Handle anyOf (expand all options)
+	if anyOf, ok := schema["anyOf"].([]interface{}); ok {
+		for _, entry := range anyOf {
+			if m, ok := entry.(map[string]interface{}); ok {
+				node.AnyOf = append(node.AnyOf, ExpandSchema(spec, m, visited))
+			}
+		}
 	}
 
 	return node
 }
 
 func GenerateExample(node *SchemaNode) interface{} {
+	// Use example value if available
+	if node.Example != nil {
+		return node.Example
+	}
+
+	// Use first enum value if available
+	if len(node.Enum) > 0 {
+		return node.Enum[0]
+	}
+
+	// Handle oneOf - use first option
+	if len(node.OneOf) > 0 {
+		return GenerateExample(node.OneOf[0])
+	}
+
+	// Handle anyOf - use first option
+	if len(node.AnyOf) > 0 {
+		return GenerateExample(node.AnyOf[0])
+	}
+
 	switch node.Type {
 	case "object", "":
 		obj := map[string]interface{}{}
@@ -393,6 +484,10 @@ func GenerateExample(node *SchemaNode) interface{} {
 			} else {
 				obj[k] = GenerateExample(v)
 			}
+		}
+		// Handle additionalProperties if present and no regular properties
+		if len(obj) == 0 && node.AdditionalProperties != nil {
+			obj["additionalProp1"] = GenerateExample(node.AdditionalProperties)
 		}
 		return obj
 	case "array":
@@ -493,8 +588,9 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 }
 
 func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {
+	// Handle external references (e.g., "./schemas/user.yaml#/User")
 	if !strings.HasPrefix(ref, "#") {
-		return nil
+		return ResolveExternalRef(ref)
 	}
 
 	parts := strings.Split(ref[2:], "/")
@@ -510,6 +606,49 @@ func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} 
 
 	resolved, _ := cur.(map[string]interface{})
 	return resolved
+}
+
+func ResolveExternalRef(ref string) map[string]interface{} {
+	// Parse external reference format: "<file_path>#<json_pointer>"
+	parts := strings.SplitN(ref, "#", 2)
+	if len(parts) < 1 {
+		return nil
+	}
+
+	filePath := parts[0]
+	var jsonPointer string
+	if len(parts) == 2 {
+		jsonPointer = parts[1]
+	}
+
+	// Check cache first
+	if cached, exists := externalRefCache[filePath]; exists {
+		if jsonPointer == "" {
+			return cached
+		}
+		// Resolve pointer within cached file
+		return ResolveRef(cached, "#"+jsonPointer)
+	}
+
+	// Load external file
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+
+	externalSpec := SafelyUnmarshalSpec(fileData)
+	if externalSpec == nil {
+		return nil
+	}
+
+	// Cache the loaded file
+	externalRefCache[filePath] = externalSpec
+
+	// Resolve pointer if present
+	if jsonPointer == "" {
+		return externalSpec
+	}
+	return ResolveRef(externalSpec, "#"+jsonPointer)
 }
 
 func PrintSpecInfo(spec map[string]interface{}) {

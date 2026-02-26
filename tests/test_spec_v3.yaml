@@ -1,0 +1,159 @@
+openapi: 3.0.0
+info:
+  title: Test API with References
+  version: 1.0.0
+  description: Test spec for validating reference resolution improvements
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /users:
+    get:
+      summary: Get all users
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      summary: Create user
+      requestBody:
+        $ref: '#/components/requestBodies/UserBody'
+      responses:
+        '201':
+          description: Created
+  /products/{id}:
+    get:
+      summary: Get product by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+  /pets:
+    post:
+      summary: Create a pet
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/Cat'
+                - $ref: '#/components/schemas/Dog'
+      responses:
+        '201':
+          description: Created
+  /config:
+    post:
+      summary: Update config
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Config'
+      responses:
+        '200':
+          description: Updated
+components:
+  parameters:
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        example: 10
+  requestBodies:
+    UserBody:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/User'
+  schemas:
+    User:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        id:
+          type: integer
+          example: 42
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          example: "john@example.com"
+        address:
+          $ref: '#/components/schemas/Address'
+        preferences:
+          type: object
+          additionalProperties:
+            type: string
+    Address:
+      type: object
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+          enum:
+            - USA
+            - Canada
+            - UK
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        tags:
+          type: array
+          items:
+            type: string
+    Cat:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [cat]
+        meow:
+          type: boolean
+    Dog:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [dog]
+        bark:
+          type: boolean
+    Config:
+      type: object
+      properties:
+        theme:
+          type: string
+          example: "dark"
+        notifications:
+          type: boolean
