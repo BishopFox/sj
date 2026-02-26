@@ -24,7 +24,9 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 	if ok && components != nil {
 		securitySchemes, ok := components["securitySchemes"].(map[string]interface{})
 		if !ok || len(securitySchemes) == 0 {
-			fmt.Println("No security schemes defined.")
+			if outputFormat != "json" {
+				fmt.Println("No security schemes defined.")
+			}
 		} else {
 			if outputFormat != "json" {
 				fmt.Println("Found security schemes:")
@@ -33,7 +35,9 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 			var apiKeyName string
 
 			for mechanism, value := range securitySchemes {
-				fmt.Printf("  - %s\n", mechanism)
+				if outputFormat != "json" {
+					fmt.Printf("  - %s\n", mechanism)
+				}
 				scheme, ok := value.(map[string]interface{})
 				if !ok {
 					continue
@@ -45,20 +49,28 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 						if schemeType := scheme["scheme"]; schemeType != nil {
 							switch schemeType {
 							case "basic":
-								fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
-								fmt.Scanln(&autoApplyBasicAuth)
-								autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
-								if autoApplyBasicAuth == "y" {
-									fmt.Printf("Enter a username.")
-									fmt.Scanln(&basicAuthUser)
-									fmt.Printf("Enter a password.")
-									fmt.Scanln(&basicAuthPass)
-									basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
-									basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
-									log.Infof("Using %s as the Basic Auth value.", basicAuthString)
-									Headers = append(Headers, "Authorization: Basic "+basicAuthString)
-								} else {
+								if quiet {
+									autoApplyBasicAuth = "n"
 									log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+								} else if outputFormat == "json" {
+									// In JSON mode, skip interactive prompts
+									autoApplyBasicAuth = "n"
+								} else {
+									fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
+									fmt.Scanln(&autoApplyBasicAuth)
+									autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
+									if autoApplyBasicAuth == "y" {
+										fmt.Printf("Enter a username.")
+										fmt.Scanln(&basicAuthUser)
+										fmt.Printf("Enter a password.")
+										fmt.Scanln(&basicAuthPass)
+										basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
+										basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
+										log.Infof("Using %s as the Basic Auth value.", basicAuthString)
+										Headers = append(Headers, "Authorization: Basic "+basicAuthString)
+									} else {
+										log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+									}
 								}
 							case "bearer":
 								log.Warn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
@@ -123,7 +135,95 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 				}
 
 				if bearerFormat, ok := scheme["bearerFormat"].(string); ok {
-					fmt.Println("  - bearerFormat:", bearerFormat)
+					if outputFormat != "json" {
+						fmt.Println("  - bearerFormat:", bearerFormat)
+					}
+				}
+			}
+		}
+	}
+
+	// Swagger 2.0 support: check for securityDefinitions at root level
+	if securityDefs, ok := spec["securityDefinitions"].(map[string]interface{}); ok && len(securityDefs) > 0 {
+		if outputFormat != "json" {
+			fmt.Println("Found security schemes (Swagger 2.0):")
+		}
+		var apiKey string
+		var apiKeyName string
+
+		for mechanism, value := range securityDefs {
+			if outputFormat != "json" {
+				fmt.Printf("  - %s\n", mechanism)
+			}
+			scheme, ok := value.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			if typ, ok := scheme["type"].(string); ok {
+				switch typ {
+				case "basic":
+					if quiet {
+						autoApplyBasicAuth = "n"
+						log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+					} else if outputFormat == "json" {
+						// In JSON mode, skip interactive prompts
+						autoApplyBasicAuth = "n"
+					} else {
+						fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
+						fmt.Scanln(&autoApplyBasicAuth)
+						autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
+						if autoApplyBasicAuth == "y" {
+							fmt.Printf("Enter a username.")
+							fmt.Scanln(&basicAuthUser)
+							fmt.Printf("Enter a password.")
+							fmt.Scanln(&basicAuthPass)
+							basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
+							basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
+							log.Infof("Using %s as the Basic Auth value.", basicAuthString)
+							Headers = append(Headers, "Authorization: Basic "+basicAuthString)
+						} else {
+							log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+						}
+					}
+				case "apiKey":
+					if inVal, ok := scheme["in"].(string); ok {
+						switch inVal {
+						case "query":
+							log.Infof("An API key can be provided via a parameter string. Would you like to apply one? (y/N)")
+							if quiet {
+								autoApplyAPIKey = "n"
+							} else {
+								fmt.Scanln(&autoApplyAPIKey)
+								autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
+							}
+
+							if autoApplyAPIKey == "y" {
+								if nameVal, ok := scheme["name"].(string); ok {
+									apiKeyName = nameVal
+								}
+								fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
+								fmt.Scanln(&apiKey)
+								log.Infof("Using %s=%s as the API key in all requests.", apiKeyName, apiKey)
+							}
+						case "header":
+							if nameVal, ok := scheme["name"].(string); ok {
+								log.Infof("An API key can be provided via the header %s. Would you like to apply one? (y/N)", nameVal)
+								if quiet {
+									autoApplyAPIKey = "n"
+								} else {
+									fmt.Scanln(&autoApplyAPIKey)
+									autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
+								}
+								if autoApplyAPIKey == "y" {
+									apiKeyName = nameVal
+									fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
+									fmt.Scanln(&apiKey)
+									Headers = append(Headers, nameVal+": "+apiKey)
+								}
+							}
+						}
+					}
 				}
 			}
 		}

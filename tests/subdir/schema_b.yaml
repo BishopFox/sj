@@ -1,0 +1,12 @@
+openapi: 3.0.0
+info:
+  title: Schema B
+  version: 1.0.0
+components:
+  schemas:
+    SchemaB:
+      type: object
+      properties:
+        value:
+          type: string
+          example: "nested-value"

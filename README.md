@@ -61,6 +61,108 @@ WARN Manual testing may be required.               Method=POST Status=400 Target
 WARN Manual testing may be required.               Method=POST Status=400 Target=/v2/v2/user
 ```
 
+### Bulk + Fallback Mode
+
+The `automate` command supports bulk target processing and discovery fallback:
+
+- `--url-file <path>`: newline-delimited targets (hosts or URLs). Blank lines and `# comments` are ignored.
+- `--fallback-brute`: if direct spec loading fails, automatically run brute discovery and then automate each discovered spec.
+
+When a host is listed without a scheme, `https://` is assumed.
+
+**Examples:**
+
+```bash
+# Bulk automate from file
+$ sj automate --url-file targets.txt -F json
+
+# Single target with fallback discovery
+$ sj automate -u https://example.com/wrong/path/swagger.json --fallback-brute
+```
+
+### Enhanced Interactive Mode
+
+The `automate` command supports an `--enhanced` flag that enables an interactive mode designed for investigating ambiguous API responses. This mode is particularly useful for:
+- LLM/MCP tool integration for automated API testing
+- Manual debugging of endpoints that return unclear error messages
+- Iterative refinement of requests when initial attempts fail
+
+When enabled, the enhanced mode activates for responses that are ambiguous (4xx/5xx errors except 401/403/404). For successful responses (2xx) or clear auth errors (401/403), the tool auto-advances to the next endpoint.
+
+**Example workflow:**
+
+```bash
+$ sj automate -l api-spec.yaml --enhanced
+
+=== REQUEST (Attempt 1/5) ===
+Method: POST
+URL: https://api.example.com/v1/users
+Query: limit=10
+Headers: Content-Type=application/json
+Body: {
+  "name": "test",
+  "email": "test@example.com"
+}
+
+=== RESPONSE ===
+Status: 500 Internal Server Error
+Body: {"error": "only one name must be first and last"}
+
+[Modify request or N for next]: Body: {"name":"Aaron Ringo","email":"test@example.com"}
+
+=== REQUEST (Attempt 2/5) ===
+Method: POST
+URL: https://api.example.com/v1/users
+Query: limit=10
+Headers: Content-Type=application/json
+Body: {
+  "name": "Aaron Ringo",
+  "email": "test@example.com"
+}
+
+=== RESPONSE ===
+Status: 201 Created
+Body: {"id": 123, "name": "Aaron Ringo", "email": "test@example.com"}
+
+=== AUTO-ADVANCING (Success) ===
+```
+
+**Supported modifications:**
+
+- `Body: {...}` - Replace entire request body with JSON
+- `Query: key=value` - Set or update a query parameter
+- `Path: key=value` - Set or update a path parameter
+- `Header: key=value` - Set or update a header
+- `key=value` - Smart detection (automatically determines if it's a query, path, or body field)
+- `key=` - Delete a parameter (empty value)
+- `N` or `next` - Skip to next endpoint
+- `Q` or `quit` - Exit the tool
+
+**Spec validation:**
+
+When modifications violate the OpenAPI specification (e.g., adding parameters not defined in the spec, wrong type), the tool displays warnings and prompts for confirmation:
+
+```
+==================================================
+WARNING: Query parameter 'custom' not defined in spec
+==================================================
+Continue outside spec? [Y/n]: 
+```
+
+**Flags:**
+
+- `--enhanced` - Enable interactive mode
+- `--max-retries int` - Maximum attempts per endpoint (default: 5)
+- `--url-file string` - Bulk target input file
+- `--fallback-brute` - Run brute discovery when direct spec loading fails
+
+**Flag conflicts:**
+
+- `-u/--url` cannot be used with `--url-file`
+- `--fallback-brute` cannot be used with `--local-file`
+
+**Note:** Enhanced mode is incompatible with `--quiet` flag as it requires interactive input.
+
 > Use the `prepare` command to prepare a list of commands for manual testing. Currently supports both `curl` and `sqlmap`. You will likely have to modify these slightly.
 
 ```bash
@@ -123,6 +225,27 @@ INFO[0000] Sending 2173 requests. This could take a while...
 Request: 343
 INFO[0033] Definition file found: https://petstore.swagger.io/v2/swagger 
 ```
+
+The `brute` command also supports multi-spec workflows:
+
+- `--continue`: keep scanning after first discovered spec
+- `--max-found <n>`: stop after `n` unique discovered specs (`0` = unlimited)
+- `--run-automate`: immediately run `automate` checks for each discovered spec
+
+**Examples:**
+
+```bash
+# Continue scanning for multiple specs (e.g., v1/v2/v3)
+$ sj brute -u https://example.com --continue --max-found 10
+
+# Discover and immediately test each discovered spec
+$ sj brute -u https://example.com --continue --run-automate
+```
+
+**Flag conflicts:**
+
+- `--max-found` requires `--continue`
+- `--run-automate` cannot be used with `--endpoint-only`
 
 > Use the `convert` command to convert a definition file from version 2 to version 3.
 

@@ -1,0 +1,23 @@
+openapi: 3.0.0
+info:
+  title: Query Object Test
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+paths:
+  /search:
+    get:
+      summary: Search with object filter
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+              age:
+                type: integer
+      responses:
+        '200':
+          description: Success

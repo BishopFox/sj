@@ -15,11 +15,12 @@ type Result struct {
 }
 
 type VerboseResult struct {
-	Method  string `json:"method"`
-	Preview string `json:"preview"`
-	Status  int    `json:"status"`
-	Target  string `json:"target"`
-	Curl    string `json:"curl"`
+	Method      string      `json:"method"`
+	Preview     interface{} `json:"preview"`
+	Status      int         `json:"status"`
+	ContentType string      `json:"content_type"`
+	Target      string      `json:"target"`
+	Curl        string      `json:"curl"`
 }
 
 var tempLogger *log.Logger

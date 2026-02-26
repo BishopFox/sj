@@ -1,0 +1,13 @@
+openapi: 3.0.0
+info:
+  title: Schema A
+  version: 1.0.0
+components:
+  schemas:
+    SchemaA:
+      type: object
+      properties:
+        id:
+          type: string
+        nested:
+          $ref: 'schema_b.yaml#/components/schemas/SchemaB'
