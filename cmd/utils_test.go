@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -561,6 +562,77 @@ func TestTargetFlagPreservesSpecBasePath(t *testing.T) {
 	// Verify basePath was extracted
 	if basePath != "/v1" {
 		t.Errorf("Expected basePath '/v1' to be preserved from spec even with -T flag, got: '%s'", basePath)
+	}
+
+	// Verify full constructed path would be correct
+	fullPath := apiTarget + basePath + "/users"
+	expectedPath := "https://staging.example.com/v1/users"
+	if fullPath != expectedPath {
+		t.Errorf("Expected full path '%s', got '%s'", expectedPath, fullPath)
+	}
+}
+
+func TestOpenAPIv3AbsoluteServerURLWithTargetFlag(t *testing.T) {
+	oldSpecBaseDir := specBaseDir
+	oldSwaggerURL := swaggerURL
+	oldAPITarget := apiTarget
+	oldBasePath := basePath
+	defer func() {
+		specBaseDir = oldSpecBaseDir
+		swaggerURL = oldSwaggerURL
+		apiTarget = oldAPITarget
+		basePath = oldBasePath
+	}()
+
+	// Test with OpenAPI v3 spec that has absolute server URL with path
+	specPath := filepath.Join("..", "tests", "test_spec_v3.yaml")
+	absPath, _ := filepath.Abs(specPath)
+	specBaseDir = filepath.Dir(absPath)
+
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Skipf("Test spec not found: %v", err)
+		return
+	}
+
+	spec := SafelyUnmarshalSpec(data)
+	if spec == nil {
+		t.Fatal("Failed to unmarshal spec")
+	}
+
+	// Simulate -T flag being used (user wants to override host)
+	swaggerURL = ""
+	apiTarget = "https://staging.example.com" // User provided target
+	basePath = ""
+
+	// Parse server info from spec (simulating what GenerateRequests does)
+	if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
+		if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
+			if srv, ok := servers[0].(map[string]interface{}); ok {
+				if serverURL, ok := srv["url"].(string); ok {
+					if strings.Contains(serverURL, "://") {
+						// This is an absolute URL
+						// When -T is set, we should still extract the path
+						if apiTarget != "" {
+							// Parse the server URL to extract path
+							if parsedURL, err := url.Parse(serverURL); err == nil && parsedURL.Path != "" && parsedURL.Path != "/" {
+								basePath = parsedURL.Path
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Verify basePath was extracted from the absolute server URL
+	if basePath != "/v1" {
+		t.Errorf("Expected basePath '/v1' to be extracted from absolute server URL even with -T flag, got: '%s'", basePath)
+	}
+
+	// Verify apiTarget was not overwritten (should still be from -T flag)
+	if apiTarget != "https://staging.example.com" {
+		t.Errorf("Expected apiTarget to remain 'https://staging.example.com' from -T flag, got: '%s'", apiTarget)
 	}
 
 	// Verify full constructed path would be correct

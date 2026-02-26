@@ -597,30 +597,34 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 								}
 							}
 						}
-					}
-				} else {
-					if srv, ok := servers[0].(map[string]interface{}); ok {
-						if serverURL, ok := srv["url"].(string); ok {
-							if strings.Contains(serverURL, "://") {
-								// Full URL in server
-								if apiTarget == "" {
-									apiTarget = serverURL
-								}
-							} else if serverURL == "/" {
-								basePath = ""
+				}
+			} else {
+				if srv, ok := servers[0].(map[string]interface{}); ok {
+					if serverURL, ok := srv["url"].(string); ok {
+						if strings.Contains(serverURL, "://") {
+							// Full URL in server
+							if apiTarget == "" {
+								apiTarget = serverURL
 							} else {
-								// Relative URL - this becomes the basePath
-								basePath = serverURL
-								// Only try to construct apiTarget if -T wasn't used
-								if apiTarget == "" {
-									if u.Scheme != "" && u.Host != "" {
-										apiTarget = u.Scheme + "://" + u.Host
-									} else {
-										// Local file with relative server URL and no -T flag
-										// Only fail for commands that need full URLs
-										if os.Args[1] != "endpoints" {
-											log.Fatalf("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
-										}
+								// -T overrides host, but server path should still be preserved.
+								if parsedServerURL, err := url.Parse(serverURL); err == nil && parsedServerURL.Path != "" && parsedServerURL.Path != "/" {
+									basePath = parsedServerURL.Path
+								}
+							}
+						} else if serverURL == "/" {
+							basePath = ""
+						} else {
+							// Relative URL - this becomes the basePath
+							basePath = serverURL
+							// Only try to construct apiTarget if -T wasn't used
+							if apiTarget == "" {
+								if u.Scheme != "" && u.Host != "" {
+									apiTarget = u.Scheme + "://" + u.Host
+								} else {
+									// Local file with relative server URL and no -T flag
+									// Only fail for commands that need full URLs
+									if os.Args[1] != "endpoints" {
+										log.Fatalf("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
 									}
 								}
 							}
