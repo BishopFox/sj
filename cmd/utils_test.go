@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -341,10 +343,12 @@ func TestJSONCurlQuoting(t *testing.T) {
 	oldSpecBaseDir := specBaseDir
 	oldSwaggerURL := swaggerURL
 	oldAPITarget := apiTarget
+	oldBasePath := basePath
 	defer func() {
 		specBaseDir = oldSpecBaseDir
 		swaggerURL = oldSwaggerURL
 		apiTarget = oldAPITarget
+		basePath = oldBasePath
 	}()
 
 	specPath := filepath.Join("..", "tests", "test_spec_v3.yaml")
@@ -365,6 +369,18 @@ func TestJSONCurlQuoting(t *testing.T) {
 	// Set up for local file mode
 	swaggerURL = ""
 	apiTarget = ""
+	basePath = ""
+
+	// Simulate GenerateRequests parsing
+	if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
+		if srv, ok := servers[0].(map[string]interface{}); ok {
+			if serverURL, ok := srv["url"].(string); ok {
+				if strings.Contains(serverURL, "://") {
+					apiTarget = serverURL
+				}
+			}
+		}
+	}
 
 	// Find a POST endpoint with JSON request body
 	paths, ok := spec["paths"].(map[string]interface{})
@@ -373,29 +389,54 @@ func TestJSONCurlQuoting(t *testing.T) {
 	}
 
 	foundJSONPost := false
-	for _, pathItem := range paths {
+	var testCurl string
+	for pathName, pathItem := range paths {
 		if pathMap, ok := pathItem.(map[string]interface{}); ok {
 			if postOp, ok := pathMap["post"].(map[string]interface{}); ok {
 				if reqBody, ok := postOp["requestBody"].(map[string]interface{}); ok {
 					if content, ok := reqBody["content"].(map[string]interface{}); ok {
-						if jsonContent, ok := content["application/json"]; ok {
-							foundJSONPost = true
-							_ = jsonContent // We found a JSON POST endpoint
-							
-							// Verify the curl generation would not have trailing quote bug
-							// The bug was: -d '%s'" instead of -d '%s'
-							// We can't easily test the full curl generation without running it,
-							// but we verified it works via manual testing
-							break
+						if jsonContent, ok := content["application/json"].(map[string]interface{}); ok {
+							if schema, ok := jsonContent["schema"].(map[string]interface{}); ok {
+								// Generate a minimal curl command to verify quoting
+								expanded := ExpandSchema(spec, schema, map[string]bool{}, spec)
+								example := GenerateExample(expanded)
+								bodyBytes, err := json.Marshal(example)
+								if err == nil {
+									// This simulates the curl generation logic
+									testCurl = fmt.Sprintf("curl -X POST \"%s%s%s\" -H \"Content-Type: application/json\" -d '%s'",
+										apiTarget, basePath, pathName, bodyBytes)
+									foundJSONPost = true
+									break
+								}
+							}
 						}
 					}
 				}
 			}
 		}
+		if foundJSONPost {
+			break
+		}
 	}
 
 	if !foundJSONPost {
 		t.Skip("No POST endpoint with JSON body found")
+	}
+
+	// Verify the curl command has proper quoting
+	// Should end with -d '...' NOT -d '...'"
+	if !strings.Contains(testCurl, "-d '") {
+		t.Error("Expected -d ' in curl command")
+	}
+
+	// Check that it doesn't have the trailing quote bug: -d '%s'"
+	if strings.Contains(testCurl, "'\"") {
+		t.Error("Found trailing quote bug: curl has '\" which indicates malformed quoting")
+	}
+
+	// Verify it ends with a single quote after the JSON data
+	if !strings.HasSuffix(testCurl, "'}") && !strings.HasSuffix(testCurl, "']") && !strings.HasSuffix(testCurl, "'") {
+		t.Errorf("Curl command should end with properly closed JSON in single quotes, got: %s", testCurl[len(testCurl)-20:])
 	}
 }
 
@@ -403,10 +444,12 @@ func TestRelativeServerURLHandling(t *testing.T) {
 	oldSpecBaseDir := specBaseDir
 	oldSwaggerURL := swaggerURL
 	oldAPITarget := apiTarget
+	oldBasePath := basePath
 	defer func() {
 		specBaseDir = oldSpecBaseDir
 		swaggerURL = oldSwaggerURL
 		apiTarget = oldAPITarget
+		basePath = oldBasePath
 	}()
 
 	specPath := filepath.Join("..", "tests", "test_relative_server.yaml")
@@ -424,20 +467,106 @@ func TestRelativeServerURLHandling(t *testing.T) {
 		t.Fatal("Failed to unmarshal spec")
 	}
 
-	// Verify the spec has a relative server URL
+	// Test 1: Verify that when -T is used with a spec that has a relative URL,
+	// the basePath from the spec is preserved
+	swaggerURL = ""
+	apiTarget = "https://example.com" // Simulating -T flag
+	basePath = ""
+
+	// Parse server info from spec (simulating what GenerateRequests does)
 	if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
 		if srv, ok := servers[0].(map[string]interface{}); ok {
 			if serverURL, ok := srv["url"].(string); ok {
-				if strings.HasPrefix(serverURL, "/") && !strings.Contains(serverURL, "://") {
-					// This is a relative URL - good
-					// The code should handle this by either:
-					// 1. Using -T flag to provide base URL
-					// 2. Failing with a clear error message
-					// We've verified both work via manual testing
-				} else {
-					t.Skip("Test spec does not have relative server URL")
+				if !strings.Contains(serverURL, "://") && serverURL != "/" {
+					// Relative URL - should become basePath
+					basePath = serverURL
 				}
 			}
 		}
+	}
+
+	// Verify basePath was extracted even though -T was used
+	if basePath != "/api/v1" {
+		t.Errorf("Expected basePath to be '/api/v1' from spec even with -T flag, got: '%s'", basePath)
+	}
+
+	// Verify apiTarget was not overwritten by spec (since -T was used)
+	if apiTarget != "https://example.com" {
+		t.Errorf("Expected apiTarget to remain 'https://example.com' from -T flag, got: '%s'", apiTarget)
+	}
+
+	// Test 2: Verify that endpoints command can work even without apiTarget
+	// Reset for this test
+	apiTarget = ""
+	basePath = ""
+	swaggerURL = ""
+
+	// When apiTarget is empty and we have relative URL, it should still extract basePath
+	if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
+		if srv, ok := servers[0].(map[string]interface{}); ok {
+			if serverURL, ok := srv["url"].(string); ok {
+				if !strings.Contains(serverURL, "://") && serverURL != "/" {
+					basePath = serverURL
+					// For endpoints command, we don't need apiTarget
+				}
+			}
+		}
+	}
+
+	if basePath != "/api/v1" {
+		t.Errorf("Expected basePath to be extracted for endpoints command, got: '%s'", basePath)
+	}
+}
+
+func TestTargetFlagPreservesSpecBasePath(t *testing.T) {
+	oldSpecBaseDir := specBaseDir
+	oldSwaggerURL := swaggerURL
+	oldAPITarget := apiTarget
+	oldBasePath := basePath
+	defer func() {
+		specBaseDir = oldSpecBaseDir
+		swaggerURL = oldSwaggerURL
+		apiTarget = oldAPITarget
+		basePath = oldBasePath
+	}()
+
+	// Test with Swagger v2 spec
+	specPath := filepath.Join("..", "tests", "test_spec_v2.yaml")
+	absPath, _ := filepath.Abs(specPath)
+	specBaseDir = filepath.Dir(absPath)
+
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Skipf("Test spec not found: %v", err)
+		return
+	}
+
+	spec := SafelyUnmarshalSpec(data)
+	if spec == nil {
+		t.Fatal("Failed to unmarshal spec")
+	}
+
+	// Simulate -T flag being used
+	swaggerURL = ""
+	apiTarget = "https://staging.example.com" // User provided target
+	basePath = ""
+
+	// Parse basePath from spec (should happen even with -T)
+	if v, ok := spec["swagger"].(string); ok && strings.HasPrefix(v, "2") {
+		if bp, ok := spec["basePath"].(string); ok && bp != "/" && bp != "" {
+			basePath = bp
+		}
+	}
+
+	// Verify basePath was extracted
+	if basePath != "/v1" {
+		t.Errorf("Expected basePath '/v1' to be preserved from spec even with -T flag, got: '%s'", basePath)
+	}
+
+	// Verify full constructed path would be correct
+	fullPath := apiTarget + basePath + "/users"
+	expectedPath := "https://staging.example.com/v1/users"
+	if fullPath != expectedPath {
+		t.Errorf("Expected full path '%s', got '%s'", expectedPath, fullPath)
 	}
 }

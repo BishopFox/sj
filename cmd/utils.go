@@ -225,7 +225,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 											if cType == "application/json" {
 												bodyBytes, err := json.Marshal(example)
 												if err == nil {
-												curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'", bodyBytes)
+													curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'", bodyBytes)
 												}
 											}
 											if cType == "application/xml" || cType == "text/xml" {
@@ -545,36 +545,39 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 		u = &url.URL{}
 	}
 
-	// Gets the target server and base path from the specification file
-	if apiTarget == "" {
-		if v, ok := spec["swagger"].(string); ok && strings.HasPrefix(v, "2") {
-			// Swagger (v2)
-			host, _ := spec["host"].(string)
-			bp, _ := spec["basePath"].(string)
-			if bp == "/" {
-				basePath = ""
-			} else if bp != "" {
-				basePath = bp
-			}
+	// Parse basePath and server info from spec
+	// Always extract basePath, even if -T was used (so -T sets host but spec sets path)
+	if v, ok := spec["swagger"].(string); ok && strings.HasPrefix(v, "2") {
+		// Swagger (v2)
+		host, _ := spec["host"].(string)
+		bp, _ := spec["basePath"].(string)
+		if bp == "/" {
+			basePath = ""
+		} else if bp != "" {
+			basePath = bp
+		}
 
-			if host != "" && strings.Contains(host, "://") {
-				apiTarget = host
-			} else {
-				if host != "" {
-					scheme := u.Scheme
-					// If scheme is empty (e.g., local file), try to get from spec's schemes array
-					if scheme == "" {
-						if schemes, ok := spec["schemes"].([]interface{}); ok && len(schemes) > 0 {
-							if s, ok := schemes[0].(string); ok {
-								scheme = s
+			// Only set apiTarget from spec if -T flag wasn't used
+			if apiTarget == "" {
+				if host != "" && strings.Contains(host, "://") {
+					apiTarget = host
+				} else {
+					if host != "" {
+						scheme := u.Scheme
+						// If scheme is empty (e.g., local file), try to get from spec's schemes array
+						if scheme == "" {
+							if schemes, ok := spec["schemes"].([]interface{}); ok && len(schemes) > 0 {
+								if s, ok := schemes[0].(string); ok {
+									scheme = s
+								}
 							}
 						}
+						// Default to https if still no scheme
+						if scheme == "" {
+							scheme = "https"
+						}
+						apiTarget = scheme + "://" + host
 					}
-					// Default to https if still no scheme
-					if scheme == "" {
-						scheme = "https"
-					}
-					apiTarget = scheme + "://" + host
 				}
 			}
 		} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
@@ -599,17 +602,26 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 					if srv, ok := servers[0].(map[string]interface{}); ok {
 						if serverURL, ok := srv["url"].(string); ok {
 							if strings.Contains(serverURL, "://") {
-								apiTarget = serverURL
+								// Full URL in server
+								if apiTarget == "" {
+									apiTarget = serverURL
+								}
 							} else if serverURL == "/" {
 								basePath = ""
 							} else {
-								// Relative URL - need a base
-								if u.Scheme != "" && u.Host != "" {
-									basePath = serverURL
-									apiTarget = u.Scheme + "://" + u.Host
-								} else {
-									// Local file with relative server URL - cannot construct full URL
-									log.Fatalf("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
+								// Relative URL - this becomes the basePath
+								basePath = serverURL
+								// Only try to construct apiTarget if -T wasn't used
+								if apiTarget == "" {
+									if u.Scheme != "" && u.Host != "" {
+										apiTarget = u.Scheme + "://" + u.Host
+									} else {
+										// Local file with relative server URL and no -T flag
+										// Only fail for commands that need full URLs
+										if os.Args[1] != "endpoints" {
+											log.Fatalf("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
+										}
+									}
 								}
 							}
 						}
@@ -617,7 +629,6 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 				}
 			}
 		}
-	}
 
 	// Use the original host at the target if no server found from specification.
 	if apiTarget == "" {
@@ -625,7 +636,10 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 			apiTarget = u.Scheme + "://" + u.Host
 		} else {
 			// No server info and no URL to parse - require user to specify target
-			log.Fatal("No server information found in spec and no URL provided. Use -T to specify target server.")
+			// Only fail for commands that need full URLs
+			if os.Args[1] != "endpoints" {
+				log.Fatal("No server information found in spec and no URL provided. Use -T to specify target server.")
+			}
 		}
 	}
 
