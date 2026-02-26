@@ -36,10 +36,23 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 		die("Could not find any defined operations. Review the file manually.")
 	}
 
+	pathKeys := make([]string, 0, len(paths))
+	for k := range paths {
+		pathKeys = append(pathKeys, k)
+	}
+	slices.Sort(pathKeys)
+
 	var errorDescriptions = make(map[any]string)
-	for pathName, pathItem := range paths {
+	for _, pathName := range pathKeys {
+		pathItem := paths[pathName]
 		if ops, ok := pathItem.(map[string]interface{}); ok {
-			for method, op := range ops {
+			methodKeys := make([]string, 0, len(ops))
+			for k := range ops {
+				methodKeys = append(methodKeys, k)
+			}
+			slices.Sort(methodKeys)
+			for _, method := range methodKeys {
+				op := ops[method]
 				switch strings.ToLower(method) {
 				// SKIPS THE "DELETE" AND "PATCH" METHODS FOR SAFETY
 				case "delete":
@@ -270,7 +283,6 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 		}
 	}
 	if os.Args[1] == "automate" && outputFormat == "json" {
-		slices.Sort(jsonResultsStringArray)
 		for r := range jsonResultsStringArray {
 			var result Result
 			var verboseResult VerboseResult
