@@ -198,7 +198,11 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 							}
 						}
 
-						logURL, _ := url.Parse(targetURL)
+						logURL, parseErr := url.Parse(targetURL)
+						if parseErr != nil || logURL == nil {
+							log.Printf("Error parsing URL '%s': %v - skipping endpoint.", targetURL, parseErr)
+							continue
+						}
 						switch os.Args[1] {
 						case "automate":
 							var postBodyData string
@@ -403,7 +407,10 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 	// Checks defined security schemes and prompts for authentication
 	CheckSecuritySchemes(spec)
 
-	u, _ := url.Parse(swaggerURL)
+	u, parseErr := url.Parse(swaggerURL)
+	if parseErr != nil {
+		u = &url.URL{}
+	}
 
 	// Gets the target server and base path from the specification file
 	if apiTarget == "" {
