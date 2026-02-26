@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,7 +33,7 @@ type SchemaNode struct {
 func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 	paths, ok := spec["paths"].(map[string]interface{})
 	if !ok || paths == nil {
-		log.Fatalf("Could not find any defined operations. Review the file manually.")
+		die("Could not find any defined operations. Review the file manually.")
 	}
 
 	var errorDescriptions = make(map[any]string)
@@ -200,7 +199,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 
 						logURL, parseErr := url.Parse(targetURL)
 						if parseErr != nil || logURL == nil {
-							log.Printf("Error parsing URL '%s': %v - skipping endpoint.", targetURL, parseErr)
+							printWarn("Error parsing URL '%s': %v - skipping endpoint.", targetURL, parseErr)
 							continue
 						}
 						switch os.Args[1] {
@@ -278,13 +277,13 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 			if verbose {
 				err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &verboseResult)
 				if err != nil {
-					log.Fatal("Error marshalling JSON:", err)
+					die("Error marshalling JSON: %v", err)
 				}
 				jsonVerboseResultArray = append(jsonVerboseResultArray, verboseResult)
 			} else {
 				err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &result)
 				if err != nil {
-					log.Fatal("Error marshalling JSON:", err)
+					die("Error marshalling JSON: %v", err)
 				}
 				jsonResultArray = append(jsonResultArray, result)
 			}
@@ -436,7 +435,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 			if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
 				if len(servers) > 1 {
 					if !quiet && (os.Args[1] != "endpoints") && apiTarget == "" {
-						log.Warn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
+						printWarn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
 						for i := range servers {
 							if srv, ok := servers[i].(map[string]interface{}); ok {
 								if serverURL, ok := srv["url"].(string); ok {
@@ -504,7 +503,7 @@ func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} 
 func PrintSpecInfo(spec map[string]interface{}) {
 	info, ok := spec["info"].(map[string]interface{})
 	if !ok || info == nil {
-		log.Info("No information defined in the documentation.")
+		printInfo("No information defined in the documentation.\n")
 	} else {
 		title, ok := info["title"].(string)
 		if ok && title != "" {

@@ -37,28 +37,72 @@ $ export PATH=$PATH:~/go/bin
 > Use the `automate` command to send a series of requests to each defined endpoint and analyze the status code of each response.
 
 ```bash
-$ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080
+go run . automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080               
 
-INFO[0000] Gathering API details.                       
+Gathering API details.
 Title: Swagger Petstore
 Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/pet/findByTags
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/pet/1
-WARN Manual testing may be required.               Method=POST Status=415 Target=/v2/v2/pet/1
-WARN Manual testing may be required.               Method=POST Status=400 Target=/v2/v2/store/order
-WARN Manual testing may be required.               Method=POST Status=400 Target=/v2/v2/user/createWithList
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/user/login
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/user/logout
-WARN Manual testing may be required.               Method=POST Status=415 Target=/v2/v2/pet/1/uploadImage
-WARN Manual testing may be required.               Method=POST Status=400 Target=/v2/v2/pet
-WARN Manual testing may be required.               Method=PUT Status=415 Target=/v2/v2/pet
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/pet/findByStatus
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/store/inventory
-INFO Endpoint accessible!                          Method=GET Status=200 Target=/v2/v2/store/order/1
-ERRO Endpoint not found.                           Method=GET Status=404 Target=/v2/v2/user/bishopfox
-WARN Manual testing may be required.               Method=PUT Status=415 Target=/v2/v2/user/bishopfox
-WARN Manual testing may be required.               Method=POST Status=400 Target=/v2/v2/user/createWithArray
-WARN Manual testing may be required.               Method=POST Status=400 Target=/v2/v2/user
+✓  GET  200  /v2/pet/findByStatus
+✓  GET  200  /v2/user/logout
+⚠  POST  400  /v2/user/createWithArray
+⚠  POST  400  /v2/store/order
+✗  GET  404  /v2/store/order/1
+⚠  POST  400  /v2/pet
+⚠  PUT  415  /v2/pet
+⚠  POST  400  /v2/user/createWithList
+✗  GET  404  /v2/user/bishopfox
+⚠  PUT  415  /v2/user/bishopfox
+⚠  POST  400  /v2/user
+⚠  POST  415  /v2/pet/1/uploadImage
+✓  GET  200  /v2/pet/findByTags
+✗  GET  404  /v2/pet/1
+⚠  POST  415  /v2/pet/1
+✓  GET  200  /v2/store/inventory
+✓  GET  200  /v2/user/login
+```
+
+You can also request verbose output to see the partial (or full) response:
+
+```bash
+$ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080 -v           
+
+Gathering API details.
+Title: Swagger Petstore
+Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
+✗  GET  404  /v2/user/bishopfox
+   {"code":1,"type":"error","message":"User not found
+⚠  PUT  415  /v2/user/bishopfox
+   {"code":415,"type":"unknown","message":"com.sun.je
+✓  GET  200  /v2/user/logout
+   {"code":200,"type":"unknown","message":"ok"}
+⚠  POST  400  /v2/user/createWithArray
+   {"code":400,"type":"unknown","message":"bad input"
+⚠  POST  400  /v2/user/createWithList
+   {"code":400,"type":"unknown","message":"bad input"
+✗  GET  404  /v2/pet/1
+   {"code":1,"type":"error","message":"Pet not found"
+⚠  POST  415  /v2/pet/1
+   {"code":415,"type":"unknown"}
+✓  GET  200  /v2/store/inventory
+   {"sold":117,"string":26,"invalidStatus":1,"-1":1,"
+⚠  POST  400  /v2/store/order
+   {"code":400,"type":"unknown","message":"bad input"
+✓  GET  200  /v2/user/login
+   {"code":200,"type":"unknown","message":"logged in 
+⚠  POST  400  /v2/pet
+   {"code":400,"type":"unknown","message":"bad input"
+⚠  PUT  415  /v2/pet
+   {"code":415,"type":"unknown","message":"com.sun.je
+✓  GET  200  /v2/pet/findByStatus
+   []
+✓  GET  200  /v2/pet/findByTags
+   []
+✗  GET  404  /v2/store/order/1
+   {"code":1,"type":"error","message":"Order not foun
+⚠  POST  400  /v2/user
+   {"code":400,"type":"unknown","message":"bad input"
+⚠  POST  415  /v2/pet/1/uploadImage
+   {"code":415,"type":"unknown"}
 ```
 
 > Use the `prepare` command to prepare a list of commands for manual testing. Currently supports both `curl` and `sqlmap`. You will likely have to modify these slightly.

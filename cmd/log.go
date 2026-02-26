@@ -1,11 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/fatih/color"
 )
 
 type Result struct {
@@ -22,11 +23,35 @@ type VerboseResult struct {
 	Curl    string `json:"curl"`
 }
 
-var tempLogger *log.Logger
+// Diagnostic helpers — all write to stderr so stdout stays clean for piping.
 
+var green = color.New(color.FgGreen, color.Bold).SprintFunc()
+var yellow = color.New(color.FgYellow, color.Bold).SprintFunc()
+var red = color.New(color.FgRed, color.Bold).SprintFunc()
+var faint = color.New(color.Faint).SprintFunc()
+
+func printInfo(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...)
+}
+
+func printWarn(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "%s %s\n", yellow("[!]"), msg)
+}
+
+func printErr(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "%s %s\n", red("[✗]"), msg)
+}
+
+func die(format string, args ...interface{}) {
+	printErr(format, args...)
+	os.Exit(1)
+}
+
+// writeLog is the main dispatch function for endpoint results.
 func writeLog(sc int, target, method, errorMsg, response string) {
-	var file *os.File
-	tempLogger = log.New()
+	var out io.Writer = os.Stdout
 	tempResponsePreviewLength := responsePreviewLength
 
 	if len(response) < responsePreviewLength {
@@ -34,205 +59,102 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 	}
 
 	if outfile != "" {
-		var err error
-		file, err = os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+		file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			fmt.Println("Output file does not exist or cannot be created")
+			fmt.Fprintln(os.Stderr, "Output file does not exist or cannot be created")
 			os.Exit(1)
 		}
-
 		defer file.Close()
-		tempLogger.SetOutput(file)
+		out = file
+		// Disable color when writing to a file.
+		color.NoColor = true
+		defer func() { color.NoColor = false }()
 	}
 
-	if outputFormat == "console" {
-		if strings.Contains(response, "\"") {
-			tempLogger.SetFormatter(&log.TextFormatter{DisableQuote: true, DisableTimestamp: true})
-		} else {
-			tempLogger.SetFormatter(&log.TextFormatter{DisableTimestamp: true})
-		}
-	} else {
-		tempLogger.SetFormatter(&log.JSONFormatter{DisableHTMLEscape: true, DisableTimestamp: true, PrettyPrint: true})
-	}
-
+	preview := ""
 	if verbose {
-		switch sc {
-		case 0:
-			logVerboseBad(sc, target, method, response, tempLogger)
-		case 1:
-			logDangerous(target, method, tempLogger)
-		case 200:
-			logVerboseAccessible(sc, target, method, response, tempLogger)
-		case 301:
-			logVerboseRedirect(sc, target, method, response, tempLogger)
-		case 302:
-			logVerboseRedirect(sc, target, method, response, tempLogger)
-		case 401:
-			logVerboseUnauth(sc, target, method, errorMsg, response, tempLogger)
-		case 403:
-			logVerboseUnauth(sc, target, method, errorMsg, response, tempLogger)
-		case 404:
-			logNotFound(sc, target, method, errorMsg, tempLogger)
-		case 8899:
-			logVerboseJSON(specTitle, specDescription)
-		default:
-			logVerboseManual(sc, target, method, errorMsg, response, tempLogger)
-		}
-	} else {
-		switch sc {
-		case 0:
-			logBad(sc, target, method, tempLogger)
-		case 1:
-			logDangerous(target, method, tempLogger)
-		case 200:
-			logAccessible(sc, target, method, tempLogger)
-		case 301:
-			logRedirect(sc, target, method, tempLogger)
-		case 302:
-			logRedirect(sc, target, method, tempLogger)
-		case 401:
-			logUnauth(sc, target, method, errorMsg, tempLogger)
-		case 403:
-			logUnauth(sc, target, method, errorMsg, tempLogger)
-		case 404:
-			logNotFound(sc, target, method, errorMsg, tempLogger)
-		case 8899:
-			logJSON(specTitle, specDescription)
-		default:
-			logManual(sc, target, method, errorMsg, tempLogger)
-		}
+		preview = response[:responsePreviewLength]
 	}
+
+	switch sc {
+	case 8899:
+		if verbose {
+			logVerboseJSON(specTitle, specDescription, out)
+		} else {
+			logJSON(specTitle, specDescription, out)
+		}
+	default:
+		logResult(sc, target, method, errorMsg, preview, out)
+	}
+
 	responsePreviewLength = tempResponsePreviewLength
 }
 
-func logAccessible(status int, target, method string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status": status,
-		"Target": target,
-		"Method": method,
-	}).Print("Endpoint accessible!")
-}
+// logResult renders a single endpoint result line.
+func logResult(sc int, target, method, errorMsg, preview string, out io.Writer) {
+	var sym string
+	var painter func(a ...interface{}) string
 
-func logVerboseAccessible(status int, target, method, response string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status":  status,
-		"Target":  target,
-		"Method":  method,
-		"Preview": response[:responsePreviewLength],
-	}).Print("Endpoint accessible!")
-}
-
-func logDangerous(target, method string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status": "skipped",
-		"Target": target,
-		"Method": method,
-	}).Warn("Endpoint skipped due to dangerous keyword (or request cancelled due to timeout).")
-}
-
-func logManual(status int, target, method, errorMsg string, logger *log.Logger) {
-	if errorMsg == "" {
-		errorMsg = "Manual testing may be required."
+	switch sc {
+	case 200:
+		sym = "✓"
+		painter = green
+	case 301, 302, 0, 1:
+		sym = "⚠"
+		painter = yellow
+	case 401, 403, 404:
+		sym = "✗"
+		painter = red
+	default:
+		sym = "⚠"
+		painter = yellow
 	}
-	logger.WithFields(log.Fields{
-		"Status": status,
-		"Target": target,
-		"Method": method,
-	}).Warn(errorMsg)
-}
 
-func logVerboseManual(status int, target, method, errorMsg, response string, logger *log.Logger) {
-	if errorMsg == "" {
-		errorMsg = "Manual testing may be required."
+	statusStr := fmt.Sprintf("%d", sc)
+	switch sc {
+	case 0:
+		statusStr = "N/A"
+	case 1:
+		statusStr = "---"
 	}
-	logger.WithFields(log.Fields{
-		"Status":  status,
-		"Target":  target,
-		"Method":  method,
-		"Preview": response[:responsePreviewLength],
-	}).Warn(errorMsg)
-}
 
-func logNotFound(status int, target, method, errorMsg string, logger *log.Logger) {
-	if errorMsg == "" {
-		errorMsg = "Endpoint not found."
+	line := fmt.Sprintf("%s  %-7s  %-3s  %s\n",
+		painter(sym),
+		painter(method),
+		painter(statusStr),
+		target,
+	)
+	fmt.Fprint(out, line)
+
+	if preview != "" {
+		fmt.Fprintf(out, "   %s\n", faint(preview))
 	}
-	logger.WithFields(log.Fields{
-		"Status": status,
-		"Target": target,
-		"Method": method,
-	}).Error(errorMsg)
 }
 
-func logRedirect(status int, target, method string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status": status,
-		"Target": target,
-		"Method": method,
-	}).Error("Redirect detected. This likely requires authentication.")
-}
-
-func logVerboseRedirect(status int, target, method, response string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status":  status,
-		"Target":  target,
-		"Method":  method,
-		"Preview": response[0:responsePreviewLength],
-	}).Error("Redirect detected. This likely requires authentication.")
-}
-
-func logBad(status int, target, method string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status": "N/A",
-		"Target": target,
-		"Method": method,
-	}).Warn("Bad request (could not reach the target).")
-}
-
-func logVerboseBad(status int, target, method, response string, logger *log.Logger) {
-	logger.WithFields(log.Fields{
-		"Status":  "N/A",
-		"Target":  target,
-		"Method":  method,
-		"Preview": response[:responsePreviewLength],
-	}).Warn("Bad request (could not reach the target).")
-}
-
-func logUnauth(status int, target, method, errorMsg string, logger *log.Logger) {
-	if errorMsg == "" {
-		errorMsg = "Unauthorized."
+func logJSON(title, description string, out io.Writer) {
+	output := struct {
+		APITitle    string   `json:"apiTitle"`
+		Description string   `json:"description"`
+		Results     []Result `json:"results"`
+	}{
+		APITitle:    title,
+		Description: description,
+		Results:     jsonResultArray,
 	}
-	logger.WithFields(log.Fields{
-		"Status": status,
-		"Target": target,
-		"Method": method,
-	}).Error(errorMsg)
+	data, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Fprintln(out, string(data))
 }
 
-func logVerboseUnauth(status int, target, method, errorMsg, response string, logger *log.Logger) {
-	if errorMsg == "" {
-		errorMsg = "Unauthorized."
+func logVerboseJSON(title, description string, out io.Writer) {
+	output := struct {
+		APITitle    string          `json:"apiTitle"`
+		Description string          `json:"description"`
+		Results     []VerboseResult `json:"results"`
+	}{
+		APITitle:    title,
+		Description: description,
+		Results:     jsonVerboseResultArray,
 	}
-	logger.WithFields(log.Fields{
-		"Status":  status,
-		"Target":  target,
-		"Method":  method,
-		"Preview": response[:responsePreviewLength],
-	}).Error(errorMsg)
-}
-
-func logJSON(title, description string) {
-	tempLogger.WithFields(log.Fields{
-		"apiTitle":    title,
-		"description": description,
-		"results":     jsonResultArray,
-	}).Println("Done")
-}
-
-func logVerboseJSON(title, description string) {
-	tempLogger.WithFields(log.Fields{
-		"apiTitle":    title,
-		"description": description,
-		"results":     jsonVerboseResultArray,
-	}).Println("Done")
+	data, _ := json.MarshalIndent(output, "", "  ")
+	fmt.Fprintln(out, string(data))
 }

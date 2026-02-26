@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -47,7 +46,7 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 							case "basic":
 								if quiet {
 									autoApplyBasicAuth = "n"
-									log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+									printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
 								} else {
 									fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
 									fmt.Scanln(&autoApplyBasicAuth)
@@ -59,21 +58,21 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 										fmt.Scanln(&basicAuthPass)
 										basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
 										basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
-										log.Infof("Using %s as the Basic Auth value.", basicAuthString)
+										printInfo("Using %s as the Basic Auth value.\n", basicAuthString)
 										Headers = append(Headers, "Authorization: Basic "+basicAuthString)
 									} else {
-										log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+										printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
 									}
 								}
 							case "bearer":
-								log.Warn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
+								printWarn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
 							}
 						}
 					case "apiKey":
 						if inVal, ok := scheme["in"].(string); ok {
 							switch inVal {
 							case "query":
-								log.Infof("An API key can be provided via a parameter string. Would you like to apply one? (y/N)")
+								printInfo("An API key can be provided via a parameter string. Would you like to apply one? (y/N)\n")
 								if quiet {
 									autoApplyAPIKey = "n"
 								} else {
@@ -87,11 +86,11 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 									}
 									fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
 									fmt.Scanln(&apiKey)
-									log.Infof("Using %s=%s as the API key in all requests.", apiKeyName, apiKey)
+									printInfo("Using %s=%s as the API key in all requests.\n", apiKeyName, apiKey)
 								}
 							case "header":
 								if mechanism == "bearer" {
-									log.Infof("A bearer token is accepted. Would you like to provide one? (y/N)")
+									printInfo("A bearer token is accepted. Would you like to provide one? (y/N)\n")
 									if quiet {
 										autoApplyBearer = "n"
 									} else {
@@ -103,11 +102,11 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 										fmt.Scanln(&bearerToken)
 										Headers = append(Headers, "Authorization: Bearer "+bearerToken)
 									} else {
-										log.Warn("A bearer token is accepted. Review the spec and craft a header manually using the -H flag.")
+										printWarn("A bearer token is accepted. Review the spec and craft a header manually using the -H flag.")
 									}
 								} else {
 									if nameVal, ok := scheme["name"].(string); ok {
-										log.Infof("An API key can be provided via the header %s. Would you like to apply one? (y/N)", nameVal)
+										printInfo("An API key can be provided via the header %s. Would you like to apply one? (y/N)\n", nameVal)
 										if quiet {
 											autoApplyAPIKey = "n"
 										} else {

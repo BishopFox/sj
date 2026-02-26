@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +16,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 	Run: func(cmd *cobra.Command, args []string) {
 		if randomUserAgent {
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
-				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+				printWarn("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
 		}
 
@@ -26,7 +25,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 		var bodyBytes []byte
 
 		fmt.Printf("\n")
-		log.Infof("Gathering endpoints.\n\n")
+		printInfo("Gathering endpoints.\n\n")
 
 		if swaggerURL != "" {
 			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
@@ -34,7 +33,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
-				log.Fatal("Error opening file:", err)
+				die("Error opening file: %v", err)
 			}
 			bodyBytes, _ = io.ReadAll(specFile)
 			GenerateRequests(bodyBytes, client)

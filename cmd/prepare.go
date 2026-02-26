@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +18,7 @@ This enables you to test specific API functions for common vulnerabilities or mi
 
 		if randomUserAgent {
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
-				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+				printWarn("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
 		}
 
@@ -32,14 +31,14 @@ This enables you to test specific API functions for common vulnerabilities or mi
 		client := CheckAndConfigureProxy()
 
 		fmt.Printf("\n")
-		log.Infof("Gathering API details.\n\n")
+		printInfo("Gathering API details.\n\n")
 		if swaggerURL != "" {
 			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
 			GenerateRequests(bodyBytes, client)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
-				log.Fatal("Error opening file:", err)
+				die("Error opening file: %v", err)
 			}
 
 			specBytes, _ := io.ReadAll(specFile)

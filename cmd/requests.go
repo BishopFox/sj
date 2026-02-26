@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -62,7 +61,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	// Handling of dangerous keywords
 	u, err := url.Parse(target)
 	if err != nil || u == nil {
-		log.Printf("Error parsing URL '%s': %v - skipping request.", target, err)
+		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
 		return nil, "", 0
 	}
 	endpoint := u.RawPath + "?" + u.RawQuery
@@ -72,12 +71,12 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0
 			} else {
-				log.Warnf("Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
+				printWarn("Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
 				fmt.Scanln(&userChoice)
 				if strings.ToLower(userChoice) != "y" {
 					if !riskSurveyed {
 						avoidDangerousRequests = "y"
-						log.Warnf("Do you want to avoid all dangerous requests? (Y/n)")
+						printWarn("Do you want to avoid all dangerous requests? (Y/n)")
 						fmt.Scanln(&avoidDangerousRequests)
 						avoidDangerousRequests = strings.ToLower(avoidDangerousRequests)
 						riskSurveyed = true
@@ -94,7 +93,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	req, err := http.NewRequest(method, target, reqData)
 	if err != nil {
 		if err != context.Canceled && err != io.EOF {
-			log.Fatal("Error: could not create HTTP request - ", err)
+			die("Error: could not create HTTP request - %v", err)
 		}
 		return nil, "", 0
 	}
@@ -102,7 +101,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	for i := range Headers {
 		delimIndex := strings.Index(Headers[i], ":")
 		if delimIndex == -1 {
-			log.Warnf("Header provided (%s) cannot be used. Headers must be in 'Key: Value' format (this may be caused by a header declared within the definition file).\n", Headers[i])
+			printWarn("Header provided (%s) cannot be used. Headers must be in 'Key: Value' format (this may be caused by a header declared within the definition file).", Headers[i])
 			continue
 		}
 
@@ -146,17 +145,17 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 
 	resp, err := client.Do(req.WithContext(ctx))
 	if err == context.DeadlineExceeded {
-		log.Printf("Error: %s - skipping request.", err)
+		printWarn("Error: %s - skipping request.", err)
 		return nil, "", 0
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
-			log.Fatal("Try supplying the --insecure flag.")
+			die("Try supplying the --insecure flag.")
 		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
-			log.Fatalf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
+			die("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
 		} else if strings.Contains(fmt.Sprint(err), "user canceled") {
 			return nil, "skipped", 1
 		} else {
-			log.Error("Error: response not received.\n", err)
+			printErr("Error: response not received.\n%v", err)
 		}
 		return nil, "", 0
 	}
@@ -180,7 +179,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 func CheckContentType(client http.Client, target string) string {
 	u, err := url.Parse(target)
 	if err != nil || u == nil {
-		log.Printf("Error parsing URL '%s': %v - skipping request.", target, err)
+		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
 		return ""
 	}
 
@@ -190,7 +189,7 @@ func CheckContentType(client http.Client, target string) string {
 	req, err := http.NewRequest("GET", target, nil)
 	if err != nil {
 		if err != context.Canceled && err != io.EOF {
-			log.Fatal("Error: could not create HTTP request - ", err)
+			die("Error: could not create HTTP request - %v", err)
 		}
 		return ""
 	}
@@ -206,15 +205,15 @@ func CheckContentType(client http.Client, target string) string {
 
 	resp, err := client.Do(req.WithContext(ctx))
 	if err == context.DeadlineExceeded {
-		log.Printf("Error: %s - skipping request.", err)
+		printWarn("Error: %s - skipping request.", err)
 		return ""
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
-			log.Fatal("Try supplying the --insecure flag.")
+			die("Try supplying the --insecure flag.")
 		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
-			log.Fatalf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
+			die("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
 		} else {
-			log.Error("Error: response not received.\n", err)
+			printErr("Error: response not received.\n%v", err)
 		}
 		return ""
 	}

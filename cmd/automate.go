@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var getAccessibleEndpoints bool
@@ -27,7 +25,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 	Run: func(cmd *cobra.Command, args []string) {
 		if outfile != "" && strings.ToLower(outputFormat) != "" {
 			if !strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) != "json" {
-				log.Fatal("Only the JSON output format is supported at the moment.")
+				die("Only the JSON output format is supported at the moment.")
 			} else if strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) == "console" {
 				outputFormat = "json"
 			}
@@ -41,7 +39,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 		if randomUserAgent {
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
-				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+				printWarn("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
 		}
 
@@ -57,7 +55,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 		if strings.ToLower(outputFormat) != "json" {
 			fmt.Printf("\n")
-			log.Infof("Gathering API details.\n")
+			printInfo("Gathering API details.\n")
 		}
 
 		if swaggerURL != "" {
@@ -65,7 +63,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
-				log.Fatal("Error opening file:", err)
+				die("Error opening file: %v", err)
 			}
 
 			bodyBytes, _ = io.ReadAll(specFile)

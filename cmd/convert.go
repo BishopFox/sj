@@ -11,7 +11,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi2"
 	"github.com/getkin/kin-openapi/openapi2conv"
 	"github.com/getkin/kin-openapi/openapi3"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -26,7 +25,7 @@ var convertCmd = &cobra.Command{
 
 		if randomUserAgent {
 			if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
-				log.Warnf("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
+				printWarn("A supplied User Agent was detected (%s) while supplying the 'random-user-agent' flag.", UserAgent)
 			}
 		}
 
@@ -34,7 +33,7 @@ var convertCmd = &cobra.Command{
 
 		if strings.ToLower(outputFormat) != "json" {
 			fmt.Printf("\n")
-			log.Infof("Gathering API details.\n\n")
+			printInfo("Gathering API details.\n\n")
 		}
 
 		if swaggerURL != "" {
@@ -42,7 +41,7 @@ var convertCmd = &cobra.Command{
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
-				log.Fatal("Error opening definition file:", err)
+				die("Error opening definition file: %v", err)
 			}
 
 			bodyBytes, _ = io.ReadAll(specFile)
@@ -61,7 +60,7 @@ var convertCmd = &cobra.Command{
 		}
 
 		if strings.HasPrefix(doc3.OpenAPI, "3") {
-			log.Warnln("Definition file is already version 3.")
+			printWarn("Definition file is already version 3.")
 			WriteConvertedDefinitionFile(bodyBytes)
 		} else if strings.HasPrefix(doc.Swagger, "2") {
 			newDoc, err := openapi2conv.ToV3(&doc)
@@ -72,11 +71,11 @@ var convertCmd = &cobra.Command{
 			switch format {
 			case "json":
 				if strings.HasSuffix(outfile, "yaml") || strings.HasSuffix(outfile, "yml") {
-					log.Warn("It looks like you're trying to save the file in YAML format. Supply the '-f yaml' option to do so (default: json).")
+					printWarn("It looks like you're trying to save the file in YAML format. Supply the '-f yaml' option to do so (default: json).")
 				}
 				converted, err := json.Marshal(newDoc)
 				if err != nil {
-					log.Fatal("Error converting definition file to v3:", err)
+					die("Error converting definition file to v3: %v", err)
 				}
 				if !strings.HasSuffix(string(converted), "}") {
 					if outfile == "" {
@@ -95,7 +94,7 @@ var convertCmd = &cobra.Command{
 			case "yaml", "yml":
 				converted, err := yaml.Marshal(newDoc)
 				if err != nil {
-					log.Fatal("Error converting definition file to v3:", err)
+					die("Error converting definition file to v3: %v", err)
 				}
 				if outfile == "" {
 					fmt.Println(string(converted))
@@ -105,7 +104,7 @@ var convertCmd = &cobra.Command{
 			}
 
 		} else {
-			log.Fatal("Error parsing definition file.")
+			die("Error parsing definition file.")
 		}
 	},
 }
@@ -113,16 +112,16 @@ var convertCmd = &cobra.Command{
 func WriteConvertedDefinitionFile(data []byte) {
 	file, err := os.OpenFile(outfile, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Errorf("Error opening file: %s\n", err)
+		printErr("Error opening file: %s", err)
 	}
 
 	defer file.Close()
 
 	_, err = file.Write(data)
 	if err != nil {
-		log.Errorf("Error writing file: %s\n", err)
+		printErr("Error writing file: %s", err)
 	} else {
 		f, _ := filepath.Abs(outfile)
-		log.Infof("Wrote file to %s\n", f)
+		printInfo("Wrote file to %s\n", f)
 	}
 }
