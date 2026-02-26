@@ -59,7 +59,11 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	}
 
 	// Handling of dangerous keywords
-	u, _ := url.Parse(target)
+	u, err := url.Parse(target)
+	if err != nil || u == nil {
+		log.Printf("Error parsing URL '%s': %v - skipping request.", target, err)
+		return nil, "", 0
+	}
 	endpoint := u.RawPath + "?" + u.RawQuery
 	for _, v := range dangerousStrings {
 		if os.Args[1] == "automate" && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
@@ -87,8 +91,11 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	defer cancel()
 
 	req, err := http.NewRequest(method, target, reqData)
-	if err != nil && err != context.Canceled && err != io.EOF {
-		log.Fatal("Error: could not create HTTP request - ", err)
+	if err != nil {
+		if err != context.Canceled && err != io.EOF {
+			log.Fatal("Error: could not create HTTP request - ", err)
+		}
+		return nil, "", 0
 	}
 
 	for i := range Headers {
@@ -168,14 +175,21 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 }
 
 func CheckContentType(client http.Client, target string) string {
-	u, _ := url.Parse(target)
+	u, err := url.Parse(target)
+	if err != nil || u == nil {
+		log.Printf("Error parsing URL '%s': %v - skipping request.", target, err)
+		return ""
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequest("GET", target, nil)
-	if err != nil && err != context.Canceled && err != io.EOF {
-		log.Fatal("Error: could not create HTTP request - ", err)
+	if err != nil {
+		if err != context.Canceled && err != io.EOF {
+			log.Fatal("Error: could not create HTTP request - ", err)
+		}
+		return ""
 	}
 
 	// User-Agent handling

@@ -45,20 +45,25 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 						if schemeType := scheme["scheme"]; schemeType != nil {
 							switch schemeType {
 							case "basic":
-								fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
-								fmt.Scanln(&autoApplyBasicAuth)
-								autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
-								if autoApplyBasicAuth == "y" {
-									fmt.Printf("Enter a username.")
-									fmt.Scanln(&basicAuthUser)
-									fmt.Printf("Enter a password.")
-									fmt.Scanln(&basicAuthPass)
-									basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
-									basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
-									log.Infof("Using %s as the Basic Auth value.", basicAuthString)
-									Headers = append(Headers, "Authorization: Basic "+basicAuthString)
-								} else {
+								if quiet {
+									autoApplyBasicAuth = "n"
 									log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+								} else {
+									fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
+									fmt.Scanln(&autoApplyBasicAuth)
+									autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
+									if autoApplyBasicAuth == "y" {
+										fmt.Printf("Enter a username.")
+										fmt.Scanln(&basicAuthUser)
+										fmt.Printf("Enter a password.")
+										fmt.Scanln(&basicAuthPass)
+										basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
+										basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
+										log.Infof("Using %s as the Basic Auth value.", basicAuthString)
+										Headers = append(Headers, "Authorization: Basic "+basicAuthString)
+									} else {
+										log.Warn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+									}
 								}
 							case "bearer":
 								log.Warn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
