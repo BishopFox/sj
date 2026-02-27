@@ -555,59 +555,59 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 			basePath = normalizeBasePath(bp)
 		}
 
-			// Only set apiTarget from spec if -T flag wasn't used
-			if apiTarget == "" {
-				if host != "" && strings.Contains(host, "://") {
-					apiTarget = host
-				} else {
-					if host != "" {
-						scheme := u.Scheme
-						// If scheme is empty (e.g., local file), try to get from spec's schemes array
-						if scheme == "" {
-							if schemes, ok := spec["schemes"].([]interface{}); ok && len(schemes) > 0 {
-								if s, ok := schemes[0].(string); ok {
-									scheme = s
-								}
+		// Only set apiTarget from spec if -T flag wasn't used
+		if apiTarget == "" {
+			if host != "" && strings.Contains(host, "://") {
+				apiTarget = host
+			} else {
+				if host != "" {
+					scheme := u.Scheme
+					// If scheme is empty (e.g., local file), try to get from spec's schemes array
+					if scheme == "" {
+						if schemes, ok := spec["schemes"].([]interface{}); ok && len(schemes) > 0 {
+							if s, ok := schemes[0].(string); ok {
+								scheme = s
 							}
 						}
-						// Default to https if still no scheme
-						if scheme == "" {
-							scheme = "https"
-						}
-						apiTarget = scheme + "://" + host
 					}
+					// Default to https if still no scheme
+					if scheme == "" {
+						scheme = "https"
+					}
+					apiTarget = scheme + "://" + host
 				}
 			}
-		} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
-			// OpenAPI (v3)
-			if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
-				if len(servers) > 1 {
-					if !quiet && (os.Args[1] != "endpoints") && apiTarget == "" {
-						printWarn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
-						for i := range servers {
-							if srv, ok := servers[i].(map[string]interface{}); ok {
-								if serverURL, ok := srv["url"].(string); ok {
-									if strings.Contains(serverURL, "://") {
-										fmt.Println(serverURL)
-									} else {
-										fmt.Println(apiTarget + serverURL)
-									}
+		}
+	} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
+		// OpenAPI (v3)
+		if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
+			if len(servers) > 1 {
+				if !quiet && (os.Args[1] != "endpoints") && apiTarget == "" {
+					printWarn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
+					for i := range servers {
+						if srv, ok := servers[i].(map[string]interface{}); ok {
+							if serverURL, ok := srv["url"].(string); ok {
+								if strings.Contains(serverURL, "://") {
+									fmt.Println(serverURL)
+								} else {
+									fmt.Println(apiTarget + serverURL)
 								}
 							}
 						}
+					}
 				}
 			} else {
 				if srv, ok := servers[0].(map[string]interface{}); ok {
-						if serverURL, ok := srv["url"].(string); ok {
-							if strings.Contains(serverURL, "://") {
-								// Full URL in server
-								if parsedServerURL, err := url.Parse(serverURL); err == nil {
-									basePath = normalizeBasePath(parsedServerURL.Path)
-									if apiTarget == "" {
-										apiTarget = parsedServerURL.Scheme + "://" + parsedServerURL.Host
-									}
+					if serverURL, ok := srv["url"].(string); ok {
+						if strings.Contains(serverURL, "://") {
+							// Full URL in server
+							if parsedServerURL, err := url.Parse(serverURL); err == nil {
+								basePath = normalizeBasePath(parsedServerURL.Path)
+								if apiTarget == "" {
+									apiTarget = parsedServerURL.Scheme + "://" + parsedServerURL.Host
 								}
-							} else if serverURL == "/" {
+							}
+						} else if serverURL == "/" {
 							basePath = ""
 						} else {
 							// Relative URL - this becomes the basePath
@@ -620,7 +620,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 									// Local file with relative server URL and no -T flag
 									// Only fail for commands that need full URLs
 									if os.Args[1] != "endpoints" {
-										log.Fatalf("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
+										die("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
 									}
 								}
 							}
@@ -629,6 +629,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 				}
 			}
 		}
+	}
 
 	// Use the original host at the target if no server found from specification.
 	if apiTarget == "" {
@@ -638,7 +639,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 			// No server info and no URL to parse - require user to specify target
 			// Only fail for commands that need full URLs
 			if os.Args[1] != "endpoints" {
-				log.Fatal("No server information found in spec and no URL provided. Use -T to specify target server.")
+				die("No server information found in spec and no URL provided. Use -T to specify target server.")
 			}
 		}
 	}
