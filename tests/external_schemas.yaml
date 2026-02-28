@@ -1,0 +1,46 @@
+openapi: 3.0.0
+info:
+  title: Shared Schemas
+  version: 1.0.0
+components:
+  schemas:
+    Customer:
+      type: object
+      required:
+        - customerId
+        - companyName
+      properties:
+        customerId:
+          type: string
+          example: "CUST-12345"
+        companyName:
+          type: string
+          example: "Acme Corporation"
+        contactInfo:
+          $ref: '#/components/schemas/ContactInfo'
+        billingAddress:
+          $ref: '#/components/schemas/Address'
+    ContactInfo:
+      type: object
+      properties:
+        phone:
+          type: string
+          example: "+1-555-0123"
+        email:
+          type: string
+          example: "contact@acme.com"
+    Address:
+      type: object
+      properties:
+        street:
+          type: string
+          example: "123 Main St"
+        city:
+          type: string
+          example: "Springfield"
+        state:
+          type: string
+          example: "IL"
+        postalCode:
+          type: string
+          example: "62701"

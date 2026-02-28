@@ -1,0 +1,30 @@
+openapi: 3.0.0
+info:
+  title: Main API Spec
+  version: 1.0.0
+  description: Test spec with external file references
+servers:
+  - url: https://api.example.com/v2
+paths:
+  /customers:
+    get:
+      summary: Get customers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './external_schemas.yaml#/components/schemas/Customer'
+    post:
+      summary: Create customer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: './external_schemas.yaml#/components/schemas/Customer'
+      responses:
+        '201':
+          description: Created

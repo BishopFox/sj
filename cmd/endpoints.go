@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -34,6 +35,13 @@ This list contains the raw endpoints (parameter values will not be appended or m
 			specFile, err := os.Open(localFile)
 			if err != nil {
 				die("Error opening file: %v", err)
+			}
+			// Set the base directory for resolving external refs
+			specBaseDir = filepath.Dir(localFile)
+			if specBaseDir == "." {
+				if absPath, err := filepath.Abs(localFile); err == nil {
+					specBaseDir = filepath.Dir(absPath)
+				}
 			}
 			bodyBytes, _ = io.ReadAll(specFile)
 			GenerateRequests(bodyBytes, client)
