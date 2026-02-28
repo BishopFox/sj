@@ -507,7 +507,7 @@ func TestRelativeServerURLHandling(t *testing.T) {
 		if srv, ok := servers[0].(map[string]interface{}); ok {
 			if serverURL, ok := srv["url"].(string); ok {
 				if !strings.Contains(serverURL, "://") && serverURL != "/" {
-					basePath = serverURL
+					basePath = normalizeBasePath(serverURL)
 					// For endpoints command, we don't need apiTarget
 				}
 			}
@@ -616,7 +616,7 @@ func TestOpenAPIv3AbsoluteServerURLWithTargetFlag(t *testing.T) {
 						if apiTarget != "" {
 							// Parse the server URL to extract path
 							if parsedURL, err := url.Parse(serverURL); err == nil && parsedURL.Path != "" && parsedURL.Path != "/" {
-								basePath = parsedURL.Path
+								basePath = normalizeBasePath(parsedURL.Path)
 							}
 						}
 					}
