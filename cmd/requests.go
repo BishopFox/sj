@@ -193,6 +193,19 @@ func CheckContentType(client http.Client, target string) string {
 		return ""
 	}
 
+	for i := range Headers {
+		delimIndex := strings.Index(Headers[i], ":")
+		if delimIndex == -1 {
+			continue
+		}
+		key := strings.TrimSpace(Headers[i][:delimIndex])
+		value := strings.TrimSpace(Headers[i][delimIndex+1:])
+		if key == "User-Agent" {
+			UserAgent = value
+		}
+		req.Header.Set(key, value)
+	}
+
 	// User-Agent handling
 	if randomUserAgent {
 		rand.New(rand.NewSource(time.Now().UnixNano()))
