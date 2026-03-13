@@ -9,6 +9,7 @@ var basePath string
 var customDate string
 var customEmail string
 var customURL string
+var force bool
 var format string
 var insecure bool
 var localFile string
@@ -69,6 +70,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&customURL, "custom-url", "c", "https://bishopfox.com", "Set a custom URL to test discovered URL parameters.")
 	rootCmd.PersistentFlags().StringVarP(&customDate, "custom-date", "d", "1990-01-01", "A custom date to test discovered date parameters.")
 	rootCmd.PersistentFlags().StringVar(&customEmail, "custom-email", "noreply@localhost.localdomain", "A custom email address to test discovered email parameters.")
+	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "Send requests without prompting, even if dangerous keywords are detected.")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the definition file (json/yaml/yml/js).")
 	rootCmd.PersistentFlags().StringArrayVarP(&Headers, "headers", "H", nil, "Add custom headers, separated by a colon (\"Name: Value\"). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Ignores server certificate validation.")

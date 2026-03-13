@@ -65,7 +65,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	}
 	endpoint := u.RawPath + "?" + u.RawQuery
 	for _, v := range dangerousStrings {
-		if os.Args[1] == "automate" && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
+		if os.Args[1] == "automate" && !force && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
 			userChoice = ""
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0
