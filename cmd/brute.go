@@ -44,7 +44,7 @@ var bruteCmd = &cobra.Command{
 			}
 		}
 
-		client := CheckAndConfigureProxy()
+		client, _ := CheckAndConfigureProxy()
 
 		var allURLs []string
 		u, err := url.Parse(swaggerURL)

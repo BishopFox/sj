@@ -65,7 +65,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	}
 	endpoint := u.RawPath + "?" + u.RawQuery
 	for _, v := range dangerousStrings {
-		if os.Args[1] == "automate" && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
+		if os.Args[1] == "automate" && !force && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
 			userChoice = ""
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0
@@ -232,7 +232,7 @@ func CheckContentType(client http.Client, target string) string {
 	return resp.Header.Get("Content-Type")
 }
 
-func CheckAndConfigureProxy() (client http.Client) {
+func CheckAndConfigureProxy() (client http.Client, replayClient *http.Client) {
 	var proxyUrl *url.URL
 
 	transport := &http.Transport{}
@@ -252,5 +252,71 @@ func CheckAndConfigureProxy() (client http.Client) {
 			return http.ErrUseLastResponse
 		},
 	}
-	return client
+
+	if replayProxy != "" {
+		replayTransport := &http.Transport{}
+		if insecure {
+			replayTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+		replayProxyUrl, err := url.Parse(replayProxy)
+		if err != nil {
+			die("Error parsing replay proxy URL: %v", err)
+		}
+		replayTransport.Proxy = http.ProxyURL(replayProxyUrl)
+		replayClient = &http.Client{
+			Transport: replayTransport,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+	}
+
+	return client, replayClient
+}
+
+func ReplayRequest(replayClient *http.Client, method, target string, timeout int64, reqData io.Reader) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequest(method, target, reqData)
+	if err != nil {
+		printWarn("Replay: error creating request for %s - %v", target, err)
+		return
+	}
+
+	for i := range Headers {
+		delimIndex := strings.Index(Headers[i], ":")
+		if delimIndex == -1 {
+			continue
+		}
+		key := strings.TrimSpace(Headers[i][:delimIndex])
+		value := strings.TrimSpace(Headers[i][delimIndex+1:])
+		req.Header.Set(key, value)
+	}
+
+	req.Header.Set("User-Agent", UserAgent)
+
+	if accept == "" {
+		req.Header.Set("Accept", "application/json, text/html, */*")
+	} else {
+		req.Header.Set("Accept", accept)
+	}
+
+	if method == "POST" {
+		if contentType == "" {
+			req.Header.Set("Content-Type", "application/json")
+		} else {
+			req.Header.Set("Content-Type", contentType)
+		}
+	}
+
+	resp, err := replayClient.Do(req.WithContext(ctx))
+	if err != nil {
+		printWarn("Replay: error sending request to %s - %v", target, err)
+		return
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	fmt.Fprintf(os.Stderr, "[Replay] %s %s -> %d\n", method, target, resp.StatusCode)
 }

@@ -29,7 +29,7 @@ var convertCmd = &cobra.Command{
 			}
 		}
 
-		client := CheckAndConfigureProxy()
+		client, _ := CheckAndConfigureProxy()
 
 		if strings.ToLower(outputFormat) != "json" {
 			fmt.Printf("\n")

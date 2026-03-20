@@ -21,7 +21,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 			}
 		}
 
-		client := CheckAndConfigureProxy()
+		client, _ := CheckAndConfigureProxy()
 
 		var bodyBytes []byte
 
@@ -30,7 +30,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 
 		if swaggerURL != "" {
 			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
-			GenerateRequests(bodyBytes, client)
+			GenerateRequests(bodyBytes, client, nil)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
@@ -44,7 +44,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 				}
 			}
 			bodyBytes, _ = io.ReadAll(specFile)
-			GenerateRequests(bodyBytes, client)
+			GenerateRequests(bodyBytes, client, nil)
 		}
 	},
 }

@@ -9,11 +9,13 @@ var basePath string
 var customDate string
 var customEmail string
 var customURL string
+var force bool
 var format string
 var insecure bool
 var localFile string
 var outfile string
 var proxy string
+var replayProxy string
 var quiet bool
 var randomUserAgent bool
 var rateLimit int
@@ -69,12 +71,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&customURL, "custom-url", "c", "https://bishopfox.com", "Set a custom URL to test discovered URL parameters.")
 	rootCmd.PersistentFlags().StringVarP(&customDate, "custom-date", "d", "1990-01-01", "A custom date to test discovered date parameters.")
 	rootCmd.PersistentFlags().StringVar(&customEmail, "custom-email", "noreply@localhost.localdomain", "A custom email address to test discovered email parameters.")
+	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "Send requests without prompting, even if dangerous keywords are detected.")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "json", "Declare the format of the definition file (json/yaml/yml/js).")
 	rootCmd.PersistentFlags().StringArrayVarP(&Headers, "headers", "H", nil, "Add custom headers, separated by a colon (\"Name: Value\"). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "Ignores server certificate validation.")
 	rootCmd.PersistentFlags().StringVarP(&localFile, "local-file", "l", "", "Loads the documentation from a local file.")
 	rootCmd.PersistentFlags().StringVarP(&outfile, "outfile", "o", "", "Output the results to a file. Only supported for the 'automate' and 'brute' commands at this time.")
 	rootCmd.PersistentFlags().StringVarP(&proxy, "proxy", "p", "NOPROXY", "Proxy host and port. Example: http://127.0.0.1:8080")
+	rootCmd.PersistentFlags().StringVar(&replayProxy, "replay-proxy", "", "Replay matched requests using this proxy.")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")
 	rootCmd.PersistentFlags().BoolVar(&randomUserAgent, "randomize-user-agent", false, "Randomizes the user agent string. Default is 'false'.")
 	// rootCmd.PersistentFlags().IntVarP(&rateLimit, "rate", "r", 15, "Limit the number of requests per second.") // NEED TO RE-IMPLEMENT RATE LIMIT
