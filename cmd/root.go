@@ -15,6 +15,7 @@ var insecure bool
 var localFile string
 var outfile string
 var proxy string
+var replayProxy string
 var quiet bool
 var randomUserAgent bool
 var rateLimit int
@@ -77,6 +78,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&localFile, "local-file", "l", "", "Loads the documentation from a local file.")
 	rootCmd.PersistentFlags().StringVarP(&outfile, "outfile", "o", "", "Output the results to a file. Only supported for the 'automate' and 'brute' commands at this time.")
 	rootCmd.PersistentFlags().StringVarP(&proxy, "proxy", "p", "NOPROXY", "Proxy host and port. Example: http://127.0.0.1:8080")
+	rootCmd.PersistentFlags().StringVar(&replayProxy, "replay-proxy", "", "Replay matched requests using this proxy.")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")
 	rootCmd.PersistentFlags().BoolVar(&randomUserAgent, "randomize-user-agent", false, "Randomizes the user agent string. Default is 'false'.")
 	// rootCmd.PersistentFlags().IntVarP(&rateLimit, "rate", "r", 15, "Limit the number of requests per second.") // NEED TO RE-IMPLEMENT RATE LIMIT

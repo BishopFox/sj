@@ -52,7 +52,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 		var bodyBytes []byte
 
-		client := CheckAndConfigureProxy()
+		client, replayClient := CheckAndConfigureProxy()
 
 		if strings.ToLower(outputFormat) != "json" {
 			fmt.Printf("\n")
@@ -81,7 +81,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			log.Info("Sending requests at a rate of ", rateLimit, " requests per second.")
 		}
 		*/
-		GenerateRequests(bodyBytes, client)
+		GenerateRequests(bodyBytes, client, replayClient)
 	},
 }
 

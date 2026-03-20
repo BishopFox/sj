@@ -29,13 +29,13 @@ This enables you to test specific API functions for common vulnerabilities or mi
 			os.Exit(1)
 		}
 
-		client := CheckAndConfigureProxy()
+		client, _ := CheckAndConfigureProxy()
 
 		fmt.Printf("\n")
 		printInfo("Gathering API details.\n\n")
 		if swaggerURL != "" {
 			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)
-			GenerateRequests(bodyBytes, client)
+			GenerateRequests(bodyBytes, client, nil)
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
@@ -50,7 +50,7 @@ This enables you to test specific API functions for common vulnerabilities or mi
 			}
 
 			specBytes, _ := io.ReadAll(specFile)
-			GenerateRequests(specBytes, client)
+			GenerateRequests(specBytes, client, nil)
 		}
 	},
 }

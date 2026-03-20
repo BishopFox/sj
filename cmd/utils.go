@@ -37,7 +37,7 @@ type SchemaNode struct {
 	AdditionalProperties *SchemaNode
 }
 
-func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
+func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, replayClient *http.Client) {
 	paths, ok := spec["paths"].(map[string]interface{})
 	if !ok || paths == nil {
 		die("Could not find any defined operations. Review the file manually.")
@@ -296,6 +296,9 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 									if outputFormat == "console" {
 										writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 									}
+									if replayClient != nil {
+										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
+									}
 								}
 							} else {
 								if jsonResultsStringArray == nil {
@@ -305,6 +308,9 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client) {
 								}
 								if outputFormat == "console" {
 									writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
+								}
+								if replayClient != nil {
+									ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
 								}
 							}
 
@@ -533,7 +539,7 @@ func GenerateExample(node *SchemaNode) interface{} {
 	}
 }
 
-func GenerateRequests(bodyBytes []byte, client http.Client) {
+func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.Client) {
 	// Ingests the specification file
 	spec := SafelyUnmarshalSpec(bodyBytes)
 
@@ -650,7 +656,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client) {
 	}
 
 	// Reviews all defined API routes and builds requests as defined
-	BuildRequestsFromPaths(spec, client)
+	BuildRequestsFromPaths(spec, client, replayClient)
 }
 
 func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {

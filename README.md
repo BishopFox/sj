@@ -61,6 +61,18 @@ Description: This is a sample server Petstore server.  You can find out more abo
 ✓  GET  200  /v2/user/login
 ```
 
+You can use the `--replay-proxy` flag to replay matched requests through a separate proxy (e.g., Burp Suite). This lets you route all traffic through one proxy (or direct) while only sending interesting results to your interception proxy:
+
+```bash
+$ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi --replay-proxy http://127.0.0.1:8080
+```
+
+You can also combine it with `--proxy` to route scanning traffic through a different proxy while replaying matches to Burp:
+
+```bash
+$ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://proxy:9090 --replay-proxy http://127.0.0.1:8080
+```
+
 You can also request verbose output to see the partial (or full) response:
 
 ```bash
@@ -229,6 +241,7 @@ Flags:
   -o, --outfile string          Output the results to a file. Only supported for the 'automate' and 'brute' commands at this time.
   -p, --proxy string            Proxy host and port. Example: http://127.0.0.1:8080 (default "NOPROXY")
   -q, --quiet                   Do not prompt for user input - uses default values for all requests.
+      --replay-proxy string     Replay matched requests using this proxy.
       --randomize-user-agent    Randomizes the user agent string. Default is 'false'.
   -s, --safe-word stringArray   Avoids 'dangerous word' check for the specified word(s). Multiple flags are accepted.
   -T, --target string           Manually set a target for the requests to be made if separate from the host the documentation resides on.
