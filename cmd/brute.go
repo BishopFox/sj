@@ -52,12 +52,13 @@ var bruteCmd = &cobra.Command{
 			printWarn("Error parsing URL: %s", err)
 		}
 		target := u.Scheme + "://" + u.Host
+		normalizedBasePath := normalizeBasePath(basePath)
 		if endpointWordlist == "" {
-			allURLs = append(allURLs, makeURLs(target, priorityURLs, "", true)...)
-			allURLs = append(allURLs, makeURLs(target, jsonEndpoints, "", false)...)
-			allURLs = append(allURLs, makeURLs(target, javascriptEndpoints, ".js", false)...)
-			allURLs = append(allURLs, makeURLs(target, jsonEndpoints, ".json", false)...)
-			allURLs = append(allURLs, makeURLs(target, jsonEndpoints, "/", false)...)
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, priorityURLs, "", true)...)
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, "", false)...)
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, javascriptEndpoints, ".js", false)...)
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, ".json", false)...)
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, "/", false)...)
 		} else {
 			endpointList, err := os.Open(endpointWordlist)
 			if err != nil {
@@ -68,7 +69,7 @@ var bruteCmd = &cobra.Command{
 			scanner := bufio.NewScanner(endpointList)
 			for scanner.Scan() {
 				endpoint := scanner.Text()
-				fullURL := target + endpoint
+				fullURL := target + normalizedBasePath + endpoint
 				allURLs = append(allURLs, fullURL)
 			}
 
@@ -119,7 +120,7 @@ var bruteCmd = &cobra.Command{
 	},
 }
 
-func makeURLs(target string, endpoints []string, fileExtension string, skipPrefix bool) []string {
+func makeURLs(target string, basePath string, endpoints []string, fileExtension string, skipPrefix bool) []string {
 	urls := []string{}
 	if !skipPrefix {
 		for _, dir := range prefixDirs {
@@ -127,7 +128,7 @@ func makeURLs(target string, endpoints []string, fileExtension string, skipPrefi
 				if dir == "" && endpoint == "" {
 					continue
 				}
-				targetURL := target + dir + endpoint + fileExtension
+				targetURL := target + basePath + dir + endpoint + fileExtension
 				urls = append(urls, targetURL)
 
 			}
@@ -137,7 +138,7 @@ func makeURLs(target string, endpoints []string, fileExtension string, skipPrefi
 			if endpoint == "" {
 				continue
 			}
-			targetURL := target + endpoint + fileExtension
+			targetURL := target + basePath + endpoint + fileExtension
 			urls = append(urls, targetURL)
 		}
 	}
