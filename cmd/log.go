@@ -30,16 +30,38 @@ var yellow = color.New(color.FgYellow, color.Bold).SprintFunc()
 var red = color.New(color.FgRed, color.Bold).SprintFunc()
 var faint = color.New(color.Faint).SprintFunc()
 
+// progressPending is set while an unterminated progress line is on screen, so
+// the diagnostic helpers can clear it before printing.
+var progressPending bool
+
+// writeProgress renders an overwriting progress line on stderr (the stream the
+// diagnostic helpers use, so clearing is reliable).
+func writeProgress(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "\r\033[2K"+format, args...)
+	progressPending = true
+}
+
+// clearProgressLine erases a pending progress line so a diagnostic prints cleanly.
+func clearProgressLine() {
+	if progressPending {
+		fmt.Fprint(os.Stderr, "\r\033[2K")
+		progressPending = false
+	}
+}
+
 func printInfo(format string, args ...interface{}) {
+	clearProgressLine()
 	fmt.Fprintf(os.Stderr, format, args...)
 }
 
 func printWarn(format string, args ...interface{}) {
+	clearProgressLine()
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "%s %s\n", yellow("[!]"), msg)
 }
 
 func printErr(format string, args ...interface{}) {
+	clearProgressLine()
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "%s %s\n", red("[✗]"), msg)
 }

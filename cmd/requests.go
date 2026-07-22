@@ -52,7 +52,16 @@ var (
 	userChoice string
 )
 
+// MakeRequest returns the body bytes, body string, and status code. It wraps
+// MakeRequestFull for callers that do not need the Content-Type.
 func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int) {
+	bodyBytes, bodyString, status, _ := MakeRequestFull(client, method, target, timeout, reqData)
+	return bodyBytes, bodyString, status
+}
+
+// MakeRequestFull also returns the response Content-Type. Taking body and
+// Content-Type from one response avoids a second request per URL.
+func MakeRequestFull(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int, string) {
 	if quiet {
 		avoidDangerousRequests = "y"
 	}
@@ -61,14 +70,14 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	u, err := url.Parse(target)
 	if err != nil || u == nil {
 		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
-		return nil, "", 0
+		return nil, "", 0, ""
 	}
 	endpoint := u.RawPath + "?" + u.RawQuery
 	for _, v := range dangerousStrings {
 		if os.Args[1] == "automate" && !force && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
 			userChoice = ""
 			if avoidDangerousRequests == "y" {
-				return nil, "", 0
+				return nil, "", 0, ""
 			} else {
 				printWarn("Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
 				fmt.Scanln(&userChoice)
@@ -80,7 +89,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 						avoidDangerousRequests = strings.ToLower(avoidDangerousRequests)
 						riskSurveyed = true
 					}
-					return nil, "", 0
+					return nil, "", 0, ""
 				}
 			}
 		}
@@ -94,7 +103,7 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 		if err != context.Canceled && err != io.EOF {
 			die("Error: could not create HTTP request - %v", err)
 		}
-		return nil, "", 0
+		return nil, "", 0, ""
 	}
 
 	for i := range Headers {
@@ -145,91 +154,36 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	resp, err := client.Do(req.WithContext(ctx))
 	if err == context.DeadlineExceeded {
 		printWarn("Error: %s - skipping request.", err)
-		return nil, "", 0
+		return nil, "", 0, ""
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
 			die("Try supplying the --insecure flag.")
 		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
 			die("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
 		} else if strings.Contains(fmt.Sprint(err), "user canceled") {
-			return nil, "skipped", 1
+			return nil, "skipped", 1, ""
 		} else {
 			printErr("Error: response not received.\n%v", err)
 		}
-		return nil, "", 0
+		return nil, "", 0, ""
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
+	contentTypeHeader := resp.Header.Get("Content-Type")
 
 	if (resp.StatusCode == 301 || resp.StatusCode == 302) && strings.Contains(bodyString, "<html>") && depth < 10 {
 		depth += 1
 		redirect, _ := resp.Location()
-		bodyBytes, bodyString, requestStatus = MakeRequest(client, method, redirect.Scheme+"://"+redirect.Host+redirect.Path, timeout, reqData)
-		return bodyBytes, bodyString, requestStatus
+		var ct string
+		bodyBytes, bodyString, requestStatus, ct = MakeRequestFull(client, method, redirect.Scheme+"://"+redirect.Host+redirect.Path, timeout, reqData)
+		return bodyBytes, bodyString, requestStatus, ct
 	}
 
 	requestStatus = resp.StatusCode
 	depth = 0
 
-	return bodyBytes, bodyString, requestStatus
-}
-
-func CheckContentType(client http.Client, target string) string {
-	u, err := url.Parse(target)
-	if err != nil || u == nil {
-		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
-		return ""
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequest("GET", target, nil)
-	if err != nil {
-		if err != context.Canceled && err != io.EOF {
-			die("Error: could not create HTTP request - %v", err)
-		}
-		return ""
-	}
-
-	for i := range Headers {
-		delimIndex := strings.Index(Headers[i], ":")
-		if delimIndex == -1 {
-			continue
-		}
-		key := strings.TrimSpace(Headers[i][:delimIndex])
-		value := strings.TrimSpace(Headers[i][delimIndex+1:])
-		if key == "User-Agent" {
-			UserAgent = value
-		}
-		req.Header.Set(key, value)
-	}
-
-	// User-Agent handling
-	if randomUserAgent {
-		rand.New(rand.NewSource(time.Now().UnixNano()))
-		UserAgent = userAgents[rand.Intn(len(userAgents))]
-		req.Header.Set("User-Agent", UserAgent)
-	} else if UserAgent != "Swagger Jacker (github.com/BishopFox/sj)" {
-		req.Header.Set("User-Agent", UserAgent)
-	}
-
-	resp, err := client.Do(req.WithContext(ctx))
-	if err == context.DeadlineExceeded {
-		printWarn("Error: %s - skipping request.", err)
-		return ""
-	} else if err != nil && err != context.Canceled && err != io.EOF {
-		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
-			die("Try supplying the --insecure flag.")
-		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
-			die("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
-		} else {
-			printErr("Error: response not received.\n%v", err)
-		}
-		return ""
-	}
-	return resp.Header.Get("Content-Type")
+	return bodyBytes, bodyString, requestStatus, contentTypeHeader
 }
 
 func CheckAndConfigureProxy() (client http.Client, replayClient *http.Client) {

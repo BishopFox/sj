@@ -21,9 +21,23 @@ import (
 var endpointOnly bool
 var endpointWordlist string
 
+// sawWAFChallenge ensures the WAF/challenge warning is emitted only once per run.
+var sawWAFChallenge bool
+
+// warnWAFChallengeOnce warns, once, that responses look like a WAF challenge.
+func warnWAFChallengeOnce() {
+	if sawWAFChallenge {
+		return
+	}
+	sawWAFChallenge = true
+	printWarn("Some responses look like a Cloudflare/WAF browser challenge (e.g. an HTTP 403 \"Just a moment...\" interstitial), so requests are likely being blocked before reaching the app.")
+	printWarn("To scan a challenge-protected target, capture a solved browser session and replay it, e.g.:\n\tsj brute -u %s -A \"<your browser User-Agent>\" -H \"Cookie: cf_clearance=<value>; __cf_bm=<value>\"\n(the cf_clearance cookie is bound to your IP + User-Agent, so run from the same host and use the exact browser User-Agent).", swaggerURL)
+}
+
 var prefixDirs []string = []string{"", "/swagger", "/swagger/docs", "/swagger/latest", "/swagger/v1", "/swagger/v2", "/swagger/v3", "/swagger/static", "/swagger/ui", "/swagger-ui", "/api-docs", "/api-docs/v1", "/api-docs/v2", "/apidocs", "/api", "/api/v1", "/api/v2", "/api/v3", "/v1", "/v2", "/v3", "/doc", "/docs", "/docs/swagger", "/docs/swagger/v1", "/docs/swagger/v2", "/docs/swagger-ui", "/docs/swagger-ui/v1", "/docs/swagger-ui/v2", "/docs/v1", "/docs/v2", "/docs/v3", "/public", "/redoc"}
 var jsonEndpoints []string = []string{"", "/index", "/swagger", "/swagger-ui", "/swagger-resources", "/swagger-config", "/openapi", "/api", "/api-docs", "/apidocs", "/v1", "/v2", "/v3", "/doc", "/docs", "/apispec", "/apispec_1", "/api-merged"}
 var javascriptEndpoints []string = []string{"/swagger-ui-init", "/swagger-ui-bundle", "/swagger-ui-standalone-preset", "/swagger-ui", "/swagger-ui.min", "/swagger-ui-es-bundle-core", "/swagger-ui-es-bundle", "/swagger-ui-standalone-preset", "/swagger-ui-layout", "/swagger-ui-plugins"}
+var htmlEndpoints []string = []string{"/index", "/swagger", "/swagger-ui", "/api-docs"}
 var priorityURLs []string = []string{"/swagger.json", "/openapi.json", "/api-docs", "/swagger", "/docs", "/api/swagger.json", "/api/openapi.json", "/api-docs/swagger.json", "/api/schema/", "/webjars/swagger-ui/index.html", "/API/swagger/ui/index", "/swagger/ui/index", "/v2/swagger.json", "/v2/openapi.json", "/v2/api-docs", "/v3/api-docs", "/v3/openapi.json", "/public/api-merged.json", "/analytics/v1/swagger", "/api.json", "/api/4.0/swagger.json", "/api/api-doc/openapi.json", "/api/api-doc/openapi.yaml", "/api/doc.json", "/api/docs.json", "/api/swagger", "/api/swagger/ui/index", "/api/v1/swagger", "/api/v2/api-docs", "/api/v2/openapi.json", "/api/v2/swagger.json", "/api/v3/api-docs", "/api/v3/apispec", "/api/workorder/openapi.json", "/apidocs", "/audiences/v1/swagger", "/audittrail/v1/swagger", "/certification/v1/swagger", "/citrixapi/store/swagger.json", "/conferencetool/v1/swagger", "/course/v1/swagger", "/dcl_swagger.yaml", "/doc/doc.json", "/doc/swagger.json", "/docs/swagger.json", "/docs/v1/swagger.json", "/ecommerce/v1/swagger", "/enrollment/v1/swagger", "/externalids/v1/swagger", "/impact/v1/swagger", "/learn/v1/swagger", "/learningplan/v1/swagger", "/manage/v1/swagger", "/management/info", "/marketplace/v1/swagger", "/messenger/v1/swagger", "/notifications/v1/swagger", "/openapi", "/openapi/spec.json", "/otj/v1/swagger", "/pages/v1/swagger", "/poweruser/v1/swagger", "/proctoring/v1/swagger", "/report/v1/swagger", "/swagger-ui/index.html", "/swagger-ui/openapi.json", "/swagger.yaml", "/swagger/0.1.0/swagger.json", "/swagger/doc.json", "/swagger/latest/swagger.json", "/swagger/swagger.json", "/swagger/test/swagger.json", "/swagger/ui/index.html", "/swagger/v1/openapiv2.json", "/swagger/v1/swagger.json", "/swagger/v2/swagger.json", "/swagger/v4/swagger.json", "/v1/openapi.json", "/v1/swagger", "/v1/swagger.json", "/swagger/docs/v1", "/swagger/docs/v1.json", "/Api/swagger/docs/v1", "/swagger/v1/swagger.json", "/api/api-docs/swagger.json", "/api/docs/", "/api/docs", "/swagger-ui"}
 
 var bruteCmd = &cobra.Command{
@@ -54,9 +68,13 @@ var bruteCmd = &cobra.Command{
 		target := u.Scheme + "://" + u.Host
 		normalizedBasePath := normalizeBasePath(basePath)
 		if endpointWordlist == "" {
+			// HTML UI entrypoints first: one hit cascades to its JS initializer
+			// and spec, so UI-referenced specs are found early. Then the priority
+			// list, then the JS and JSON sweeps.
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, htmlEndpoints, ".html", false)...)
 			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, priorityURLs, "", true)...)
-			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, "", false)...)
 			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, javascriptEndpoints, ".js", false)...)
+			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, "", false)...)
 			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, ".json", false)...)
 			allURLs = append(allURLs, makeURLs(target, normalizedBasePath, jsonEndpoints, "/", false)...)
 		} else {
@@ -145,36 +163,98 @@ func makeURLs(target string, basePath string, endpoints []string, fileExtension 
 	return urls
 }
 
-func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
+// maxFollowDepth bounds how far brute chases discovered spec references.
+const maxFollowDepth = 3
 
+func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
+	seen := make(map[string]bool)
 	for i, url := range urls {
-		ct := CheckContentType(client, url)
-		if strings.Contains(ct, "application/json") {
-			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
-			if bodyBytes != nil {
-				checkSpec := UnmarshalSpec(bodyBytes)
-				if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
-					fmt.Println("")
-					printInfo("Definition file found: %s\n", url)
+		if found, checkSpec := checkURLForSpec(url, client, seen, 0); found {
+			return true, checkSpec
+		}
+		writeProgress("Request: %d", i+1)
+	}
+	return false, nil
+}
+
+// checkURLForSpec fetches one URL and validates it as an OpenAPI/Swagger
+// definition. For a Swagger UI page, initializer script, or swagger-config JSON,
+// it follows the referenced URLs (bounded by maxFollowDepth and a shared visited
+// set) so specs on non-standard paths are still found.
+func checkURLForSpec(target string, client http.Client, seen map[string]bool, depth int) (bool, *openapi3.T) {
+	if depth > maxFollowDepth || seen[target] || isExternalDemoSpecURL(target) {
+		return false, nil
+	}
+	seen[target] = true
+
+	// One request so body and Content-Type come from the same response (two
+	// separate requests can desync behind a WAF/CDN).
+	bodyBytes, bodyString, _, ctRaw := MakeRequestFull(client, "GET", target, timeout, nil)
+	if bodyBytes == nil {
+		return false, nil
+	}
+	ct := strings.ToLower(ctRaw)
+
+	// Skip content types that cannot be a spec or reference one.
+	for _, skip := range []string{"image/", "video/", "audio/", "font/", "text/css", "application/zip", "application/pdf"} {
+		if strings.Contains(ct, skip) {
+			return false, nil
+		}
+	}
+
+	if looksLikeChallengeResponse(bodyString) {
+		warnWAFChallengeOnce()
+		return false, nil
+	}
+
+	// Swagger UI HTML page: follow the references it declares.
+	if strings.Contains(ct, "text/html") || looksLikeHTMLDocument(bodyString) {
+		return followReferences(ExtractSpecURLsFromHTML(bodyString, target), client, seen, depth)
+	}
+
+	// JavaScript initializer: embedded spec, or the spec url it configures.
+	// Library bundles are excluded to avoid their internal url: strings.
+	if strings.Contains(ct, "javascript") || strings.HasSuffix(strings.ToLower(urlPath(target)), ".js") {
+		if !looksLikeSwaggerInitCandidate(target) {
+			return false, nil
+		}
+		if bodyHasEmbeddedSpec(bodyString) {
+			if jsonContent, ok := ExtractJSONFromJSSpec(bodyBytes); ok {
+				checkSpec := UnmarshalSpec(jsonContent)
+				if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
+					printInfo("Found operation definitions embedded in JavaScript file at %s\n", target)
 					return true, checkSpec
 				}
 			}
-		} else if strings.Contains(ct, "application/javascript") {
-			bodyBytes, _, _ := MakeRequest(client, "GET", url, timeout, nil)
-			if bodyBytes != nil {
-				if jsonContent, ok := ExtractJSONFromJSSpec(bodyBytes); ok {
-					checkSpec := UnmarshalSpec(jsonContent)
-					if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
-						printInfo("\nFound operation definitions embedded in JavaScript file at %s\n", url)
-						return true, checkSpec
-					}
-				}
+		}
+		var refs []string
+		for _, ref := range extractJSSpecURLs(bodyString) {
+			if !looksLikeSpecReference(ref) {
+				continue
+			}
+			if abs, ok := resolveReferenceURL(target, ref); ok {
+				refs = append(refs, abs)
 			}
 		}
-		if i == len(urls) {
-			fmt.Printf("\033[2K\r%s%d\n", "Request: ", i+1)
-		} else {
-			fmt.Printf("\033[2K\r%s%d", "Request: ", i+1)
+		return followReferences(dedupeURLs(refs), client, seen, depth)
+	}
+
+	// Otherwise treat the body as a candidate spec and validate by parsing.
+	checkSpec := UnmarshalSpec(bodyBytes)
+	if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
+		printInfo("Definition file found: %s\n", target)
+		return true, checkSpec
+	}
+
+	// Not a spec: may be a swagger-config document that references one.
+	return followReferences(ExtractSpecURLsFromHTML(bodyString, target), client, seen, depth)
+}
+
+// followReferences recurses into a set of discovered spec/reference URLs.
+func followReferences(refs []string, client http.Client, seen map[string]bool, depth int) (bool, *openapi3.T) {
+	for _, ref := range refs {
+		if found, checkSpec := checkURLForSpec(ref, client, seen, depth+1); found {
+			return true, checkSpec
 		}
 	}
 	return false, nil
