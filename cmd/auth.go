@@ -22,16 +22,16 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 	if ok && components != nil {
 		securitySchemes, ok := components["securitySchemes"].(map[string]interface{})
 		if !ok || len(securitySchemes) == 0 {
-			fmt.Println("No security schemes defined.")
+			printInfo("No security schemes defined.\n")
 		} else {
 			if outputFormat != "json" {
-				fmt.Println("Found security schemes:")
+				printInfo("Found security schemes:\n")
 			}
 			var apiKey string
 			var apiKeyName string
 
 			for mechanism, value := range securitySchemes {
-				fmt.Printf("  - %s\n", mechanism)
+				printInfo("  - %s\n", mechanism)
 				scheme, ok := value.(map[string]interface{})
 				if !ok {
 					continue
@@ -47,13 +47,13 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 									autoApplyBasicAuth = "n"
 									printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
 								} else {
-									fmt.Println("Basic Authentication is accepted. Supply a username and password? (y/N)")
+									printInfo("Basic Authentication is accepted. Supply a username and password? (y/N)\n")
 									fmt.Scanln(&autoApplyBasicAuth)
 									autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
 									if autoApplyBasicAuth == "y" {
-										fmt.Printf("Enter a username.")
+										printInfo("Enter a username.")
 										fmt.Scanln(&basicAuthUser)
-										fmt.Printf("Enter a password.")
+										printInfo("Enter a password.")
 										fmt.Scanln(&basicAuthPass)
 										basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
 										basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
@@ -83,7 +83,7 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 									if nameVal, ok := scheme["name"].(string); ok {
 										apiKeyName = nameVal
 									}
-									fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
+									printInfo("What value would you like to use for the API key (%s)?", apiKeyName)
 									fmt.Scanln(&apiKey)
 									printInfo("Using %s=%s as the API key in all requests.\n", apiKeyName, apiKey)
 								}
@@ -97,7 +97,7 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 										autoApplyBearer = strings.ToLower(autoApplyBearer)
 									}
 									if autoApplyBearer == "y" {
-										fmt.Printf("What value would you like to use for the Bearer Token? ")
+										printInfo("What value would you like to use for the Bearer Token? ")
 										fmt.Scanln(&bearerToken)
 										Headers = append(Headers, "Authorization: Bearer "+bearerToken)
 									} else {
@@ -114,7 +114,7 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 										}
 										if autoApplyAPIKey == "y" {
 											apiKeyName = nameVal
-											fmt.Printf("What value would you like to use for the API key (%s)?", apiKeyName)
+											printInfo("What value would you like to use for the API key (%s)?", apiKeyName)
 											fmt.Scanln(&apiKey)
 											Headers = append(Headers, nameVal+": "+apiKey)
 										}
@@ -126,7 +126,7 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 				}
 
 				if bearerFormat, ok := scheme["bearerFormat"].(string); ok {
-					fmt.Println("  - bearerFormat:", bearerFormat)
+					printInfo("  - bearerFormat: %s\n", bearerFormat)
 				}
 			}
 		}
