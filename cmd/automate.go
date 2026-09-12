@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -46,8 +45,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 		_, err := time.Parse("2006-01-02", customDate)
 		if err != nil {
-			fmt.Println("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
-			os.Exit(1)
+			die("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
 		}
 
 		var bodyBytes []byte
@@ -55,7 +53,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 		client, replayClient := CheckAndConfigureProxy()
 
 		if strings.ToLower(outputFormat) != "json" {
-			fmt.Printf("\n")
+			printInfo("\n")
 			printInfo("Gathering API details.\n")
 		}
 

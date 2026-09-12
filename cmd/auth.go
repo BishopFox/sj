@@ -24,9 +24,7 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 		if !ok || len(securitySchemes) == 0 {
 			printInfo("No security schemes defined.\n")
 		} else {
-			if outputFormat != "json" {
-				printInfo("Found security schemes:\n")
-			}
+			printInfo("Found security schemes:\n")
 			var apiKey string
 			var apiKeyName string
 

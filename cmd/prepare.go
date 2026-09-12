@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,13 +24,12 @@ This enables you to test specific API functions for common vulnerabilities or mi
 
 		_, err := time.Parse("2006-01-02", customDate)
 		if err != nil {
-			fmt.Println("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
-			os.Exit(1)
+			die("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
 		}
 
 		client, _ := CheckAndConfigureProxy()
 
-		fmt.Printf("\n")
+		printInfo("\n")
 		printInfo("Gathering API details.\n\n")
 		if swaggerURL != "" {
 			bodyBytes, _, _ := MakeRequest(client, "GET", swaggerURL, timeout, nil)

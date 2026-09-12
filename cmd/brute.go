@@ -378,7 +378,7 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 	} else if strings.HasPrefix(doc.Swagger, "2") {
 		newDoc, err := openapi2conv.ToV3(&doc)
 		if err != nil {
-			fmt.Printf("Error converting v2 document to v3: %s\n", err)
+			printErr("Error converting v2 document to v3: %s", err)
 		}
 		return newDoc
 	} else if os.Args[1] == "brute" {

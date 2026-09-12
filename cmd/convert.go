@@ -32,7 +32,7 @@ var convertCmd = &cobra.Command{
 		client, _ := CheckAndConfigureProxy()
 
 		if strings.ToLower(outputFormat) != "json" {
-			fmt.Printf("\n")
+			printInfo("\n")
 			printInfo("Gathering API details.\n\n")
 		}
 
@@ -65,7 +65,7 @@ var convertCmd = &cobra.Command{
 		} else if strings.HasPrefix(doc.Swagger, "2") {
 			newDoc, err := openapi2conv.ToV3(&doc)
 			if err != nil {
-				fmt.Printf("Error converting v2 document to v3: %s\n", err)
+				printErr("Error converting v2 document to v3: %s", err)
 			}
 
 			switch format {

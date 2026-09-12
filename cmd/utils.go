@@ -639,11 +639,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 					for i := range servers {
 						if srv, ok := servers[i].(map[string]interface{}); ok {
 							if serverURL, ok := srv["url"].(string); ok {
-								if strings.Contains(serverURL, "://") {
-									fmt.Println(serverURL)
-								} else {
-									fmt.Println(apiTarget + serverURL)
-								}
+								printInfo("%s\n", serverURL)
 							}
 						}
 					}
@@ -827,7 +823,7 @@ func PrintSpecInfo(spec map[string]interface{}) {
 			if outputFormat == "json" {
 				specTitle = title
 			} else {
-				fmt.Printf("Title: %s\n", title)
+				printInfo("Title: %s\n", title)
 			}
 		}
 
@@ -836,7 +832,7 @@ func PrintSpecInfo(spec map[string]interface{}) {
 			if outputFormat == "json" {
 				specDescription = description
 			} else {
-				fmt.Printf("Description: %s\n", description)
+				printInfo("Description: %s\n", description)
 			}
 		}
 	}
@@ -881,8 +877,7 @@ func SafelyUnmarshalSpec(data []byte) map[string]interface{} {
 
 	var doc map[string]interface{}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		fmt.Printf("Failed to unmarshal API documentation: %v\n", err)
-		os.Exit(1)
+		die("Failed to unmarshal API documentation: %v", err)
 	}
 
 	return doc

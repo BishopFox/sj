@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,7 +24,7 @@ This list contains the raw endpoints (parameter values will not be appended or m
 
 		var bodyBytes []byte
 
-		fmt.Printf("\n")
+		printInfo("\n")
 		printInfo("Gathering endpoints.\n\n")
 
 		if swaggerURL != "" {
