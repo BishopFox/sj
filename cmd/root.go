@@ -53,7 +53,7 @@ $ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 			printErr("Command not specified. See the --help flag for usage.")
 		}
 	},
-	Version: "2.8.1",
+	Version: "2.8.2",
 }
 
 func Execute() {
