@@ -107,6 +107,11 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						// appended to curl once, after every parameter is known.
 						var curlBodyArg string
 						var multipartBody bool
+						// cookiePairs accumulates "in: cookie" parameters so they can be sent
+						// as a single Cookie header. hasFormData records whether any
+						// "in: formData" (Swagger v2) parameter contributed a body field.
+						var cookiePairs []string
+						var hasFormData bool
 
 						// Extracts the expected parameters from the parameters object
 						if params, ok := opMap["parameters"].([]interface{}); ok {
@@ -196,16 +201,42 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 											case "path":
 												targetURL = replacePathParam(targetURL, name, pValue)
 											case "header":
-												// A header value is not a URL component, so it is shell-quoted
-												// for the printed command but never percent-encoded.
+												// Append to Headers so the value is actually sent (applyHeaders
+												// applies every Headers entry to the request), and mirror it in
+												// the printed command. A header value is not a URL component, so
+												// it is shell-quoted for display but never percent-encoded.
+												Headers = append(Headers, name+": "+pValue)
 												curl += " -H " + shellSingleQuote(name+": "+pValue)
+											case "cookie":
+												// Accumulate cookie params; they are emitted as one Cookie
+												// header after every parameter is known.
+												cookiePairs = append(cookiePairs, encodePair(name, pValue))
 											case "body":
 												bodyData = appendFormField(bodyData, name, pValue)
+											case "formData":
+												// Swagger v2 form field: contributes to the urlencoded body.
+												bodyData = appendFormField(bodyData, name, pValue)
+												hasFormData = true
 											}
 										}
 									}
 								}
 							}
+						}
+
+						// Emit accumulated cookie parameters as a single Cookie header,
+						// both on the request (via Headers) and in the printed command.
+						if len(cookiePairs) > 0 {
+							cookieValue := strings.Join(cookiePairs, "; ")
+							Headers = append(Headers, "Cookie: "+cookieValue)
+							curl += " -b " + shellSingleQuote(cookieValue)
+						}
+
+						// Swagger v2 formData params have no requestBody to set the content
+						// type, so declare the urlencoded type on both paths here.
+						if hasFormData {
+							EnforceSingleContentType("application/x-www-form-urlencoded")
+							curl += " -H " + shellSingleQuote("Content-Type: application/x-www-form-urlencoded")
 						}
 
 						// Extracts the expected parameters from the requestBody object

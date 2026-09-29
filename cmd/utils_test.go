@@ -3,6 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -1098,5 +1101,120 @@ func TestRawValuesSkipsEncoding(t *testing.T) {
 	}
 	if got, want := escapeXmlText("a < b"), "a &lt; b"; got != want {
 		t.Errorf("escapeXmlText should still escape: expected %q, got %q", want, got)
+	}
+}
+
+// TestParameterLocationsAreSent drives BuildRequestsFromPaths against a live
+// server and asserts that "in: header", "in: cookie", and "in: formData"
+// parameters are actually placed on the outgoing request - not merely printed
+// in the generated curl command.
+func TestParameterLocationsAreSent(t *testing.T) {
+	oldArgs := os.Args
+	oldAPITarget := apiTarget
+	oldBasePath := basePath
+	oldSwaggerURL := swaggerURL
+	oldOutputFormat := outputFormat
+	oldHeaders := Headers
+	oldContentType := contentType
+	oldAccept := accept
+	oldUA := UserAgent
+	oldForce := force
+	oldTimeout := timeout
+	oldTestString := testString
+	oldRandomUA := randomUserAgent
+	oldPreview := responsePreviewLength
+	oldResults := jsonResultsStringArray
+	defer func() {
+		os.Args = oldArgs
+		apiTarget = oldAPITarget
+		basePath = oldBasePath
+		swaggerURL = oldSwaggerURL
+		outputFormat = oldOutputFormat
+		Headers = oldHeaders
+		contentType = oldContentType
+		accept = oldAccept
+		UserAgent = oldUA
+		force = oldForce
+		timeout = oldTimeout
+		testString = oldTestString
+		randomUserAgent = oldRandomUA
+		responsePreviewLength = oldPreview
+		jsonResultsStringArray = oldResults
+	}()
+
+	type captured struct {
+		header string
+		cookie string
+		ctype  string
+		body   string
+	}
+	got := map[string]captured{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		c := captured{
+			header: r.Header.Get("X-Api-Key"),
+			ctype:  r.Header.Get("Content-Type"),
+			body:   string(body),
+		}
+		if ck, err := r.Cookie("session"); err == nil {
+			c.cookie = ck.Value
+		}
+		got[r.Method+" "+r.URL.Path] = c
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	os.Args = []string{"sj", "automate"}
+	apiTarget = srv.URL
+	basePath = ""
+	swaggerURL = ""
+	outputFormat = "json"
+	Headers = nil
+	contentType = ""
+	accept = ""
+	UserAgent = "sj-test"
+	randomUserAgent = false
+	force = true // skip the dangerous-keyword prompt
+	timeout = 30
+	testString = "bishopfox"
+	responsePreviewLength = 50
+	jsonResultsStringArray = nil
+
+	spec := map[string]interface{}{
+		"paths": map[string]interface{}{
+			"/things": map[string]interface{}{
+				"get": map[string]interface{}{
+					"parameters": []interface{}{
+						map[string]interface{}{"name": "X-Api-Key", "in": "header", "type": "string"},
+						map[string]interface{}{"name": "session", "in": "cookie", "type": "string"},
+					},
+				},
+			},
+			"/profile": map[string]interface{}{
+				"post": map[string]interface{}{
+					"parameters": []interface{}{
+						map[string]interface{}{"name": "field1", "in": "formData", "type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	BuildRequestsFromPaths(spec, http.Client{}, nil)
+
+	g := got["GET /things"]
+	if g.header != "bishopfox" {
+		t.Errorf("in:header parameter not sent: X-Api-Key=%q, want %q", g.header, "bishopfox")
+	}
+	if g.cookie != "bishopfox" {
+		t.Errorf("in:cookie parameter not sent: session=%q, want %q", g.cookie, "bishopfox")
+	}
+
+	p := got["POST /profile"]
+	if !strings.Contains(p.ctype, "application/x-www-form-urlencoded") {
+		t.Errorf("in:formData did not set urlencoded Content-Type, got %q", p.ctype)
+	}
+	if p.body != "field1=bishopfox" {
+		t.Errorf("in:formData parameter not sent in body: got %q, want %q", p.body, "field1=bishopfox")
 	}
 }
