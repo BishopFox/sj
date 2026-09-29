@@ -100,10 +100,15 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 
 	switch sc {
 	case 8899:
+		// -q suppresses the spec metadata, leaving only the results array.
+		title, description := specTitle, specDescription
+		if quiet {
+			title, description = "", ""
+		}
 		if verbose {
-			logVerboseJSON(specTitle, specDescription, out)
+			logVerboseJSON(title, description, out)
 		} else {
-			logJSON(specTitle, specDescription, out)
+			logJSON(title, description, out)
 		}
 	default:
 		logResult(sc, target, method, errorMsg, preview, out)
@@ -155,8 +160,8 @@ func logResult(sc int, target, method, errorMsg, preview string, out io.Writer) 
 
 func logJSON(title, description string, out io.Writer) {
 	output := struct {
-		APITitle    string   `json:"apiTitle"`
-		Description string   `json:"description"`
+		APITitle    string   `json:"apiTitle,omitempty"`
+		Description string   `json:"description,omitempty"`
 		Results     []Result `json:"results"`
 	}{
 		APITitle:    title,
@@ -169,8 +174,8 @@ func logJSON(title, description string, out io.Writer) {
 
 func logVerboseJSON(title, description string, out io.Writer) {
 	output := struct {
-		APITitle    string          `json:"apiTitle"`
-		Description string          `json:"description"`
+		APITitle    string          `json:"apiTitle,omitempty"`
+		Description string          `json:"description,omitempty"`
 		Results     []VerboseResult `json:"results"`
 	}{
 		APITitle:    title,

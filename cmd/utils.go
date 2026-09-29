@@ -824,13 +824,15 @@ func ResolveExternalRef(ref string, baseDir string) map[string]interface{} {
 func PrintSpecInfo(spec map[string]interface{}) {
 	info, ok := spec["info"].(map[string]interface{})
 	if !ok || info == nil {
-		printInfo("No information defined in the documentation.\n")
+		if !quiet {
+			printInfo("No information defined in the documentation.\n")
+		}
 	} else {
 		title, ok := info["title"].(string)
 		if ok && title != "" {
 			if outputFormat == "json" {
 				specTitle = title
-			} else {
+			} else if !quiet {
 				printInfo("Title: %s\n", title)
 			}
 		}
@@ -839,7 +841,7 @@ func PrintSpecInfo(spec map[string]interface{}) {
 		if ok && description != "" {
 			if outputFormat == "json" {
 				specDescription = description
-			} else {
+			} else if !quiet {
 				printInfo("Description: %s\n", description)
 			}
 		}
