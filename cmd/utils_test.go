@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSwaggerV2SchemeHandling(t *testing.T) {
@@ -834,4 +835,86 @@ func TestExpandSchemaAllOf(t *testing.T) {
 			t.Errorf("Properties = %v, want id and note", node.Properties)
 		}
 	})
+}
+
+func TestExpandSchemaSiblingRefReuse(t *testing.T) {
+	spec := map[string]interface{}{
+		"components": map[string]interface{}{
+			"schemas": map[string]interface{}{
+				"Address": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"street": map[string]interface{}{"type": "string"},
+						"city":   map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+	ref := map[string]interface{}{"$ref": "#/components/schemas/Address"}
+	order := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"billing":  ref,
+			"shipping": ref,
+		},
+	}
+
+	node := ExpandSchema(spec, order, map[string]bool{}, spec)
+
+	for _, name := range []string{"billing", "shipping"} {
+		sub := node.Properties[name]
+		if sub == nil {
+			t.Fatalf("missing property %q", name)
+		}
+		if len(sub.Properties) == 0 {
+			t.Errorf("%q lost its expanded properties; the same ref in a sibling branch should not trip the cycle guard", name)
+		}
+	}
+}
+
+func TestExpandSchemaSelfCycleBounded(t *testing.T) {
+	spec := map[string]interface{}{
+		"components": map[string]interface{}{
+			"schemas": map[string]interface{}{
+				"Node": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"value": map[string]interface{}{"type": "string"},
+						"children": map[string]interface{}{
+							"type":  "array",
+							"items": map[string]interface{}{"$ref": "#/components/schemas/Node"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	done := make(chan *SchemaNode, 1)
+	go func() {
+		root := spec["components"].(map[string]interface{})["schemas"].(map[string]interface{})["Node"].(map[string]interface{})
+		done <- ExpandSchema(spec, root, map[string]bool{}, spec)
+	}()
+
+	var node *SchemaNode
+	select {
+	case node = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ExpandSchema did not terminate on a self-referential schema")
+	}
+
+	// The first ref expansion (children.items) is a full Node; the ref nested one
+	// level deeper is on the current path, so it collapses to a bare object.
+	level1 := node.Properties["children"].Items
+	if level1 == nil || len(level1.Properties) == 0 {
+		t.Fatalf("first Node ref should expand fully, got %+v", level1)
+	}
+	level2 := level1.Properties["children"].Items
+	if level2 == nil {
+		t.Fatal("expected nested children.items node")
+	}
+	if len(level2.Properties) != 0 {
+		t.Errorf("recursive Node ref should collapse to a bare object, got properties %v", level2.Properties)
+	}
 }

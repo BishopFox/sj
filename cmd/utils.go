@@ -430,17 +430,21 @@ func ExpandSchema(
 
 	if ref, ok := schema["$ref"].(string); ok {
 		if visited[ref] {
-			return &SchemaNode{Type: "object"} // break cycle
+			return &SchemaNode{Type: "object"} // break cycle: ref is already on the current path
 		}
-		visited[ref] = true
 
 		// Resolve ref in the context spec (could be external)
 		resolved, resolvedSpec := ResolveRefWithContext(contextSpec, ref)
 		if resolved == nil {
 			return &SchemaNode{Type: "object"}
 		}
-		// Continue expansion using the resolved spec as context
-		return ExpandSchema(spec, resolved, visited, resolvedSpec)
+
+		// Mark ref as on the current expansion path, expand, then pop it so sibling
+		// branches can reference the same schema without a false cycle-break.
+		visited[ref] = true
+		node := ExpandSchema(spec, resolved, visited, resolvedSpec)
+		delete(visited, ref)
+		return node
 	}
 
 	node := &SchemaNode{
