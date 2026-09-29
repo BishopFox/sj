@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -97,7 +98,10 @@ func applyHeaders(req *http.Request, userAgent string) string {
 	}
 	req.Header.Set("Accept", acceptHdr)
 
-	if req.Method == "POST" {
+	// A request that carries bytes has to declare a media type. http.NewRequest
+	// sets ContentLength for the *bytes.Reader bodies sj builds, so this covers
+	// every method that declared a body; POST keeps its historical default.
+	if req.ContentLength > 0 || req.Method == "POST" {
 		if ctype == "" {
 			ctype = "application/json"
 		}
@@ -208,7 +212,16 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequest(method, target, reqData)
+	// Buffer the body: client.Do drains the reader, so a redirect would
+	// otherwise be replayed without one.
+	var reqBody []byte
+	var body io.Reader
+	if reqData != nil {
+		reqBody, _ = io.ReadAll(reqData)
+		body = bytes.NewReader(reqBody)
+	}
+
+	req, err := http.NewRequest(method, target, body)
 	if err != nil {
 		if err != context.Canceled && err != io.EOF {
 			die("Error: could not create HTTP request - %v", err)
@@ -240,10 +253,18 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 	contentTypeHeader := resp.Header.Get("Content-Type")
 
 	if (resp.StatusCode == 301 || resp.StatusCode == 302) && strings.Contains(bodyString, "<html>") && depth < 10 {
+		// A 301/302 without a usable Location is not followed.
+		redirect, locErr := resp.Location()
+		if locErr != nil || redirect == nil {
+			requestStatus = resp.StatusCode
+			depth = 0
+			return bodyBytes, bodyString, requestStatus, contentTypeHeader, sentUserAgent
+		}
 		depth += 1
-		redirect, _ := resp.Location()
 		var ct, ua string
-		bodyBytes, bodyString, requestStatus, ct, ua = MakeRequestFull(client, method, redirect.Scheme+"://"+redirect.Host+redirect.Path, timeout, reqData)
+		// redirect.String() keeps the query string, and the buffered body is
+		// replayed through a fresh reader.
+		bodyBytes, bodyString, requestStatus, ct, ua = MakeRequestFull(client, method, redirect.String(), timeout, bytes.NewReader(reqBody))
 		return bodyBytes, bodyString, requestStatus, ct, ua
 	}
 

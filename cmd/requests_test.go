@@ -1,7 +1,12 @@
 package cmd
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 )
@@ -60,5 +65,66 @@ func TestRequestWords(t *testing.T) {
 				t.Errorf("requestWords(%q): did not expect to find %q", tc.in, w)
 			}
 		}
+	}
+}
+
+// TestRedirectPreservesBodyAndQuery covers the manual 301/302 follow in
+// MakeRequestFull: the body has to survive the hop (client.Do drains the
+// original reader) and so does the query string.
+func TestRedirectPreservesBodyAndQuery(t *testing.T) {
+	oldArgs, oldForce, oldDepth := os.Args, force, depth
+	oldHeaders, oldAccept, oldContentType := Headers, accept, contentType
+	oldUA, oldRandomUA := UserAgent, randomUserAgent
+	defer func() {
+		os.Args, force, depth = oldArgs, oldForce, oldDepth
+		Headers, accept, contentType = oldHeaders, oldAccept, oldContentType
+		UserAgent, randomUserAgent = oldUA, oldRandomUA
+	}()
+	os.Args = []string{"sj", "automate"}
+	force = true
+	depth = 0
+	Headers = nil
+	accept = ""
+	contentType = ""
+	UserAgent = "sj-test"
+	randomUserAgent = false
+
+	var gotMethod, gotBody, gotQuery string
+	landing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotMethod, gotBody, gotQuery = r.Method, string(b), r.URL.RawQuery
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer landing.Close()
+
+	// The recursion only triggers on a 301/302 whose body looks like HTML.
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Location", landing.URL+"/landed?q=1")
+		w.WriteHeader(http.StatusFound)
+		w.Write([]byte("<html>moved</html>"))
+	}))
+	defer redirector.Close()
+
+	// ErrUseLastResponse matches the production client (CheckAndConfigureProxy)
+	// and is what hands the redirect back to MakeRequestFull to follow itself.
+	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	want := `{"name":"bishopfox"}`
+	_, _, sc, _, _ := MakeRequestFull(client, "PUT", redirector.URL+"/first", 30, bytes.NewReader([]byte(want)))
+
+	if sc != http.StatusOK {
+		t.Errorf("redirect not followed: status %d, want %d", sc, http.StatusOK)
+	}
+	if gotMethod != "PUT" {
+		t.Errorf("redirected method: got %q, want %q", gotMethod, "PUT")
+	}
+	if gotBody != want {
+		t.Errorf("redirected request lost its body: got %q, want %q", gotBody, want)
+	}
+	if gotQuery != "q=1" {
+		t.Errorf("redirected request lost its query string: got %q, want %q", gotQuery, "q=1")
 	}
 }

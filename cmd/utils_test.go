@@ -1218,3 +1218,167 @@ func TestParameterLocationsAreSent(t *testing.T) {
 		t.Errorf("in:formData parameter not sent in body: got %q, want %q", p.body, "field1=bishopfox")
 	}
 }
+
+// TestDeclaredBodyIsSentForAllMethods asserts that an operation declaring a
+// request body transmits it whatever the method - the printed curl command has
+// always carried "-d", but only POST used to put the bytes on the wire. It also
+// covers the Swagger v2 "in: body" parameter, whose schema is the whole body and
+// is therefore serialized as JSON rather than as form fields.
+func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
+	oldArgs := os.Args
+	oldAPITarget := apiTarget
+	oldBasePath := basePath
+	oldSwaggerURL := swaggerURL
+	oldOutputFormat := outputFormat
+	oldHeaders := Headers
+	oldContentType := contentType
+	oldAccept := accept
+	oldUA := UserAgent
+	oldForce := force
+	oldTimeout := timeout
+	oldTestString := testString
+	oldRandomUA := randomUserAgent
+	oldPreview := responsePreviewLength
+	oldResults := jsonResultsStringArray
+	defer func() {
+		os.Args = oldArgs
+		apiTarget = oldAPITarget
+		basePath = oldBasePath
+		swaggerURL = oldSwaggerURL
+		outputFormat = oldOutputFormat
+		Headers = oldHeaders
+		contentType = oldContentType
+		accept = oldAccept
+		UserAgent = oldUA
+		force = oldForce
+		timeout = oldTimeout
+		testString = oldTestString
+		randomUserAgent = oldRandomUA
+		responsePreviewLength = oldPreview
+		jsonResultsStringArray = oldResults
+	}()
+
+	type captured struct {
+		ctype string
+		body  string
+	}
+	got := map[string]captured{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got[r.Method+" "+r.URL.Path] = captured{
+			ctype: r.Header.Get("Content-Type"),
+			body:  string(body),
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	os.Args = []string{"sj", "automate"}
+	apiTarget = srv.URL
+	basePath = ""
+	swaggerURL = ""
+	outputFormat = "json"
+	Headers = nil
+	contentType = ""
+	accept = ""
+	UserAgent = "sj-test"
+	randomUserAgent = false
+	force = true // skip the dangerous-keyword prompt
+	timeout = 30
+	testString = "bishopfox"
+	responsePreviewLength = 50
+	jsonResultsStringArray = nil
+
+	nameObject := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{"type": "string"},
+		},
+	}
+	v2BodyParam := []interface{}{
+		map[string]interface{}{"name": "payload", "in": "body", "schema": nameObject},
+	}
+	jsonRequestBody := func(cType string) map[string]interface{} {
+		return map[string]interface{}{
+			"content": map[string]interface{}{
+				cType: map[string]interface{}{"schema": nameObject},
+			},
+		}
+	}
+
+	spec := map[string]interface{}{
+		"paths": map[string]interface{}{
+			"/json": map[string]interface{}{
+				"put": map[string]interface{}{"requestBody": jsonRequestBody("application/json")},
+			},
+			"/multipart": map[string]interface{}{
+				"put": map[string]interface{}{"requestBody": jsonRequestBody("multipart/form-data")},
+			},
+			"/v2body": map[string]interface{}{
+				"post": map[string]interface{}{"parameters": v2BodyParam},
+				"put":  map[string]interface{}{"parameters": v2BodyParam},
+			},
+			"/v2array": map[string]interface{}{
+				"post": map[string]interface{}{
+					"parameters": []interface{}{
+						map[string]interface{}{
+							"name": "payload",
+							"in":   "body",
+							"schema": map[string]interface{}{
+								"type":  "array",
+								"items": nameObject,
+							},
+						},
+					},
+				},
+			},
+			"/nobody": map[string]interface{}{
+				"get": map[string]interface{}{},
+			},
+		},
+	}
+
+	BuildRequestsFromPaths(spec, http.Client{}, nil)
+
+	// A v3 requestBody on a PUT: the regression this test exists for.
+	if j := got["PUT /json"]; j.body != `{"name":"bishopfox"}` {
+		t.Errorf("PUT body not sent: got %q, want %q", j.body, `{"name":"bishopfox"}`)
+	} else if j.ctype != "application/json" {
+		t.Errorf("PUT Content-Type: got %q, want %q", j.ctype, "application/json")
+	}
+
+	// multipart suppresses "-d" in the printed command but must still be sent.
+	m := got["PUT /multipart"]
+	if !strings.Contains(m.ctype, "multipart/form-data; boundary=") {
+		t.Errorf("PUT multipart Content-Type: got %q", m.ctype)
+	}
+	if !strings.Contains(m.body, "bishopfox") {
+		t.Errorf("PUT multipart body not sent: got %q", m.body)
+	}
+
+	// A Swagger v2 "in: body" param is JSON, and PUT is treated exactly as POST.
+	post, put := got["POST /v2body"], got["PUT /v2body"]
+	if post.body != put.body || post.ctype != put.ctype {
+		t.Errorf("v2 in:body differs by method: POST %q/%q, PUT %q/%q", post.ctype, post.body, put.ctype, put.body)
+	}
+	if put.body != `{"name":"bishopfox"}` {
+		t.Errorf("v2 in:body not serialized as JSON: got %q, want %q", put.body, `{"name":"bishopfox"}`)
+	}
+	if put.ctype != "application/json" {
+		t.Errorf("v2 in:body Content-Type: got %q, want %q", put.ctype, "application/json")
+	}
+
+	// A non-object body schema is a JSON array, not a "body=[map[...]]" form field.
+	if a := got["POST /v2array"]; !strings.HasPrefix(a.body, `[{`) {
+		t.Errorf("v2 in:body array not serialized as a JSON array: got %q", a.body)
+	}
+
+	// The widened Content-Type default must not touch a bodiless request.
+	n := got["GET /nobody"]
+	if n.body != "" {
+		t.Errorf("bodiless GET sent a body: got %q", n.body)
+	}
+	if n.ctype != "" {
+		t.Errorf("bodiless GET declared a Content-Type: got %q", n.ctype)
+	}
+}

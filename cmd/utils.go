@@ -109,9 +109,12 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						var multipartBody bool
 						// cookiePairs accumulates "in: cookie" parameters so they can be sent
 						// as a single Cookie header. hasFormData records whether any
-						// "in: formData" (Swagger v2) parameter contributed a body field.
+						// "in: formData" (Swagger v2) parameter contributed a body field, and
+						// bodyTypeRendered whether the body's Content-Type has already been
+						// written to the printed command.
 						var cookiePairs []string
 						var hasFormData bool
+						var bodyTypeRendered bool
 
 						// Extracts the expected parameters from the parameters object
 						if params, ok := opMap["parameters"].([]interface{}); ok {
@@ -136,6 +139,23 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 											continue
 										}
 
+										// A Swagger v2 "in: body" parameter's schema is the entire request
+										// body, so it is serialized as JSON rather than folded into form
+										// fields. This covers non-object schemas (an array body) too.
+										if in == "body" {
+											bodySchema, _ := pMap["schema"].(map[string]interface{})
+											expandedBody := ExpandSchema(spec, bodySchema, map[string]bool{}, paramContextSpec)
+											if encoded, err := json.Marshal(GenerateExample(expandedBody)); err == nil {
+												bodyData = string(encoded)
+												EnforceSingleContentType("application/json")
+												if !bodyTypeRendered {
+													curl += " -H " + shellSingleQuote("Content-Type: application/json")
+													bodyTypeRendered = true
+												}
+											}
+											continue
+										}
+
 										// Handle schema-based parameters (OpenAPI v3 and some v2)
 										var handledAsObject bool // Track if we already handled this as an object
 										if schema, ok := pMap["schema"].(map[string]interface{}); ok {
@@ -149,12 +169,6 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 														// Query params with object schema: add each property to query string
 														for _, propertyItem := range slices.Sorted(maps.Keys(exampleMap)) {
 															targetURL = appendQueryParam(targetURL, propertyItem, exampleMap[propertyItem])
-														}
-														handledAsObject = true
-													} else if in == "body" {
-														// Body params with object schema: add each property to body data
-														for _, propertyItem := range slices.Sorted(maps.Keys(exampleMap)) {
-															bodyData = appendFormField(bodyData, propertyItem, exampleMap[propertyItem])
 														}
 														handledAsObject = true
 													}
@@ -211,8 +225,6 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 												// Accumulate cookie params; they are emitted as one Cookie
 												// header after every parameter is known.
 												cookiePairs = append(cookiePairs, encodePair(name, pValue))
-											case "body":
-												bodyData = appendFormField(bodyData, name, pValue)
 											case "formData":
 												// Swagger v2 form field: contributes to the urlencoded body.
 												bodyData = appendFormField(bodyData, name, pValue)
@@ -331,12 +343,12 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						}
 						switch os.Args[1] {
 						case "automate":
-							var postBodyData string
-							if strings.ToLower(method) == "post" {
-								postBodyData = bodyData
-							}
+							// Any method that declares a body sends it. These are the same bytes
+							// the printed curl command was composed from above, so what is shown
+							// and what goes on the wire cannot disagree.
+							sentBody := []byte(bodyData)
 
-							_, resp, sc, _, sentUA := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
+							_, resp, sc, _, sentUA := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody))
 
 							tempResponsePreviewLength := responsePreviewLength
 							if len(resp) <= responsePreviewLength {
@@ -363,7 +375,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 									}
 									if replayClient != nil {
-										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)), sentUA)
+										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
 									}
 								}
 							} else {
@@ -376,7 +388,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 									writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 								}
 								if replayClient != nil {
-									ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)), sentUA)
+									ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
 								}
 							}
 
