@@ -189,7 +189,7 @@ func checkURLForSpec(target string, client http.Client, seen map[string]bool, de
 
 	// One request so body and Content-Type come from the same response (two
 	// separate requests can desync behind a WAF/CDN).
-	bodyBytes, bodyString, _, ctRaw := MakeRequestFull(client, "GET", target, timeout, nil)
+	bodyBytes, bodyString, _, ctRaw, _ := MakeRequestFull(client, "GET", target, timeout, nil)
 	if bodyBytes == nil {
 		return false, nil
 	}

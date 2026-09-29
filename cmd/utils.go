@@ -120,7 +120,10 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 									}
 
 									if name, ok := pMap["name"].(string); ok {
-										in := pMap["in"].(string)
+										in, hasIn := pMap["in"].(string)
+										if !hasIn {
+											continue
+										}
 
 										// Handle schema-based parameters (OpenAPI v3 and some v2)
 										var handledAsObject bool // Track if we already handled this as an object
@@ -185,6 +188,11 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										} else {
 											// Fallback to generic value
 											pValue = "1"
+										}
+
+										// An unconsumed object schema leaves pValue empty: "/pet/{id}" -> "/pet/".
+										if !handledAsObject && pValue == "" {
+											pValue = testString
 										}
 
 										// Only process parameters that weren't already handled as objects
@@ -307,7 +315,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 								postBodyData = bodyData
 							}
 
-							_, resp, sc := MakeRequest(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
+							_, resp, sc, _, sentUA := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
 
 							tempResponsePreviewLength := responsePreviewLength
 							if len(resp) <= responsePreviewLength {
@@ -334,7 +342,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 									}
 									if replayClient != nil {
-										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
+										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)), sentUA)
 									}
 								}
 							} else {
@@ -347,7 +355,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 									writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
 								}
 								if replayClient != nil {
-									ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)))
+									ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader([]byte(postBodyData)), sentUA)
 								}
 							}
 
