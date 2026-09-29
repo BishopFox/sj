@@ -120,29 +120,25 @@ Description: This is a sample server Petstore server.  You can find out more abo
 > Use the `prepare` command to prepare a list of commands for manual testing. Currently supports both `curl` and `sqlmap`. You will likely have to modify these slightly.
 
 ```bash
-$ sj prepare -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080      
+$ sj prepare -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080
 
-INFO[0000] Gathering API details.
-                      
-Title: Swagger Petstore
-Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
-$ curl -X POST "https://petstore.swagger.io/v2/pet/{petId}"
-$ curl -X GET "https://petstore.swagger.io/v2/pet/{petId}"
+$ curl -X POST "https://petstore.swagger.io/v2/pet" -d 'category=map%5Bid%3A1+name%3Abishopfox%5D&id=1&name=doggie&photoUrls=https%3A%2F%2Fbishopfox.com&status=available&tags=%5Bmap%5Bid%3A1+name%3Abishopfox%5D%5D'
+$ curl -X PUT "https://petstore.swagger.io/v2/pet" -d 'category=map%5Bid%3A1+name%3Abishopfox%5D&id=1&name=doggie&photoUrls=https%3A%2F%2Fbishopfox.com&status=available&tags=%5Bmap%5Bid%3A1+name%3Abishopfox%5D%5D'
+$ curl -X GET "https://petstore.swagger.io/v2/pet/findByStatus?status=1"
+$ curl -X GET "https://petstore.swagger.io/v2/pet/findByTags?tags=1"
+$ curl -X GET "https://petstore.swagger.io/v2/pet/1"
+$ curl -X POST "https://petstore.swagger.io/v2/pet/1"
+$ curl -X POST "https://petstore.swagger.io/v2/pet/1/uploadImage"
 $ curl -X GET "https://petstore.swagger.io/v2/store/inventory"
-$ curl -X POST "https://petstore.swagger.io/v2/user/createWithList" -d 'body=1'
+$ curl -X POST "https://petstore.swagger.io/v2/store/order" -d 'complete=true&id=1&petId=1&quantity=1&shipDate=1990-01-01&status=placed'
+$ curl -X GET "https://petstore.swagger.io/v2/store/order/1"
+$ curl -X POST "https://petstore.swagger.io/v2/user" -d 'email=noreply%40localhost.localdomain&firstName=bishopfox&id=1&lastName=bishopfox&password=bishopfox&phone=bishopfox&userStatus=1&username=bishopfox'
+$ curl -X POST "https://petstore.swagger.io/v2/user/createWithArray" -d 'body=%5Bmap%5Bemail%3Anoreply%40localhost.localdomain+firstName%3Abishopfox+id%3A1+lastName%3Abishopfox+password%3Abishopfox+phone%3Abishopfox+userStatus%3A1+username%3Abishopfox%5D%5D'
+$ curl -X POST "https://petstore.swagger.io/v2/user/createWithList" -d 'body=%5Bmap%5Bemail%3Anoreply%40localhost.localdomain+firstName%3Abishopfox+id%3A1+lastName%3Abishopfox+password%3Abishopfox+phone%3Abishopfox+userStatus%3A1+username%3Abishopfox%5D%5D'
+$ curl -X GET "https://petstore.swagger.io/v2/user/login?username=bishopfox&password=bishopfox"
 $ curl -X GET "https://petstore.swagger.io/v2/user/logout"
-$ curl -X POST "https://petstore.swagger.io/v2/user/createWithArray" -d 'body=1'
-$ curl -X GET "https://petstore.swagger.io/v2/pet/findByStatus"
-$ curl -X GET "https://petstore.swagger.io/v2/pet/findByTags"
-$ curl -X POST "https://petstore.swagger.io/v2/store/order" -d 'petId=1&quantity=1&shipDate=bishopfox&status=bishopfox&complete=1&id=1&body='
-$ curl -X POST "https://petstore.swagger.io/v2/pet/{petId}/uploadImage"
-$ curl -X POST "https://petstore.swagger.io/v2/pet" -d 'photoUrls=1&tags=1&status=bishopfox&id=1&category=&name=doggie&body='
-$ curl -X PUT "https://petstore.swagger.io/v2/pet" -d 'id=1&category=&name=doggie&photoUrls=1&tags=1&status=bishopfox&body='
-$ curl -X GET "https://petstore.swagger.io/v2/user/{username}"
-$ curl -X PUT "https://petstore.swagger.io/v2/user/{username}" -d 'email=bishopfox&password=bishopfox&phone=bishopfox&userStatus=1&id=1&username=bishopfox&firstName=bishopfox&lastName=bishopfox&body='
-$ curl -X GET "https://petstore.swagger.io/v2/user/login"
-$ curl -X POST "https://petstore.swagger.io/v2/user" -d 'phone=bishopfox&userStatus=1&id=1&username=bishopfox&firstName=bishopfox&lastName=bishopfox&email=bishopfox&password=bishopfox&body='
-$ curl -X GET "https://petstore.swagger.io/v2/store/order/{orderId}"
+$ curl -X GET "https://petstore.swagger.io/v2/user/bishopfox"
+$ curl -X PUT "https://petstore.swagger.io/v2/user/bishopfox" -d 'email=noreply%40localhost.localdomain&firstName=bishopfox&id=1&lastName=bishopfox&password=bishopfox&phone=bishopfox&userStatus=1&username=bishopfox'
 ```
 
 > Use the `endpoints` command to generate a list of raw endpoints from the provided definition file.
