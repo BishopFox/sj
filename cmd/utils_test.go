@@ -721,3 +721,117 @@ func TestNormalizeBasePath(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandSchemaAllOf(t *testing.T) {
+	spec := map[string]interface{}{
+		"components": map[string]interface{}{
+			"schemas": map[string]interface{}{
+				"Base": map[string]interface{}{
+					"type":     "object",
+					"required": []interface{}{"id"},
+					"properties": map[string]interface{}{
+						"id": map[string]interface{}{"type": "integer"},
+					},
+				},
+				"Extra": map[string]interface{}{
+					"properties": map[string]interface{}{
+						"note": map[string]interface{}{"type": "string"},
+					},
+				},
+				"StrEnum": map[string]interface{}{
+					"type": "string",
+					"enum": []interface{}{"a", "b"},
+				},
+				"Dict": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": map[string]interface{}{"type": "integer"},
+				},
+			},
+		},
+	}
+	ref := func(name string) map[string]interface{} {
+		return map[string]interface{}{"$ref": "#/components/schemas/" + name}
+	}
+	expand := func(schema map[string]interface{}) *SchemaNode {
+		return ExpandSchema(spec, schema, map[string]bool{}, spec)
+	}
+
+	t.Run("sibling properties and required are merged", func(t *testing.T) {
+		node := expand(map[string]interface{}{
+			"allOf":    []interface{}{ref("Base")},
+			"required": []interface{}{"name"},
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{"type": "string"},
+			},
+		})
+		if node.Type != "object" {
+			t.Errorf("Type = %q, want object", node.Type)
+		}
+		for _, k := range []string{"id", "name"} {
+			if node.Properties[k] == nil {
+				t.Errorf("missing property %q", k)
+			}
+			if !node.Required[k] {
+				t.Errorf("%q should be required", k)
+			}
+		}
+	})
+
+	t.Run("sibling example and enum survive", func(t *testing.T) {
+		node := expand(map[string]interface{}{
+			"allOf":   []interface{}{ref("StrEnum")},
+			"enum":    []interface{}{"x"},
+			"example": "x",
+		})
+		if node.Example != "x" {
+			t.Errorf("Example = %v, want x", node.Example)
+		}
+		if len(node.Enum) != 1 || node.Enum[0] != "x" {
+			t.Errorf("Enum = %v, want [x]", node.Enum)
+		}
+	})
+
+	t.Run("primitive type and enum come from subschema", func(t *testing.T) {
+		node := expand(map[string]interface{}{"allOf": []interface{}{ref("StrEnum")}})
+		if node.Type != "string" {
+			t.Errorf("Type = %q, want string", node.Type)
+		}
+		if len(node.Enum) != 2 {
+			t.Errorf("Enum = %v, want [a b]", node.Enum)
+		}
+		if got := GenerateExample(node); got != "a" {
+			t.Errorf("GenerateExample = %v, want a", got)
+		}
+	})
+
+	t.Run("sibling items are kept", func(t *testing.T) {
+		node := expand(map[string]interface{}{
+			"type":  "array",
+			"items": map[string]interface{}{"type": "integer"},
+			"allOf": []interface{}{map[string]interface{}{"description": "list"}},
+		})
+		if node.Type != "array" {
+			t.Errorf("Type = %q, want array", node.Type)
+		}
+		if node.Items == nil || node.Items.Type != "integer" {
+			t.Errorf("Items = %+v, want integer items", node.Items)
+		}
+	})
+
+	t.Run("additionalProperties from subschema is carried over", func(t *testing.T) {
+		node := expand(map[string]interface{}{"allOf": []interface{}{ref("Dict")}})
+		if node.AdditionalProperties == nil || node.AdditionalProperties.Type != "integer" {
+			t.Errorf("AdditionalProperties = %+v, want integer", node.AdditionalProperties)
+		}
+	})
+
+	t.Run("untyped composition defaults to object", func(t *testing.T) {
+		node := expand(map[string]interface{}{"allOf": []interface{}{ref("Extra"), ref("Base")}})
+		if node.Type != "object" {
+			t.Errorf("Type = %q, want object", node.Type)
+		}
+		if node.Properties["id"] == nil || node.Properties["note"] == nil {
+			t.Errorf("Properties = %v, want id and note", node.Properties)
+		}
+	})
+}

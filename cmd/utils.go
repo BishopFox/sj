@@ -490,21 +490,43 @@ func ExpandSchema(
 		}
 	}
 
-	// Handle allOf (merge all schemas)
+	// Handle allOf (merge every subschema into this node; the node's own values win)
 	if allOf, ok := schema["allOf"].([]interface{}); ok {
-		merged := &SchemaNode{Type: "object", Properties: map[string]*SchemaNode{}, Required: map[string]bool{}}
 		for _, entry := range allOf {
-			if m, ok := entry.(map[string]interface{}); ok {
-				sub := ExpandSchema(spec, m, visited, contextSpec)
-				for k, v := range sub.Properties {
-					merged.Properties[k] = v
-				}
-				for k, v := range sub.Required {
-					merged.Required[k] = v
+			m, ok := entry.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			sub := ExpandSchema(spec, m, visited, contextSpec)
+			for k, v := range sub.Properties {
+				if _, exists := node.Properties[k]; !exists {
+					node.Properties[k] = v
 				}
 			}
+			for k, v := range sub.Required {
+				node.Required[k] = v
+			}
+			if node.Type == "" {
+				node.Type = sub.Type
+			}
+			if node.Enum == nil {
+				node.Enum = sub.Enum
+			}
+			if node.Example == nil {
+				node.Example = sub.Example
+			}
+			if node.Items == nil {
+				node.Items = sub.Items
+			}
+			if node.AdditionalProperties == nil {
+				node.AdditionalProperties = sub.AdditionalProperties
+			}
+			node.OneOf = append(node.OneOf, sub.OneOf...)
+			node.AnyOf = append(node.AnyOf, sub.AnyOf...)
 		}
-		return merged
+		if node.Type == "" {
+			node.Type = "object"
+		}
 	}
 
 	// Handle oneOf (expand all options)
