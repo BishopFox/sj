@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var (
@@ -112,6 +114,59 @@ func MakeRequest(client http.Client, method, target string, timeout int64, reqDa
 	return bodyBytes, bodyString, status
 }
 
+// splitWords lowercases s and splits it into words on non-alphanumeric
+// characters and camelCase boundaries, so "uploadImage" yields
+// ["upload", "image"] while "border" stays a single word.
+func splitWords(s string) []string {
+	var words []string
+	var current []rune
+	flush := func() {
+		if len(current) > 0 {
+			words = append(words, strings.ToLower(string(current)))
+			current = nil
+		}
+	}
+
+	var prev rune
+	for _, r := range s {
+		switch {
+		case unicode.IsUpper(r) && unicode.IsLower(prev):
+			flush()
+			current = append(current, r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			current = append(current, r)
+		default:
+			flush()
+		}
+		prev = r
+	}
+	flush()
+
+	return words
+}
+
+// requestWords returns the set of words appearing in a request's path and
+// query string. It reads the decoded forms so the dangerous-keyword scan
+// behaves identically whether or not a value required percent-encoding.
+func requestWords(u *url.URL) map[string]bool {
+	words := make(map[string]bool)
+	add := func(s string) {
+		for _, w := range splitWords(s) {
+			words[w] = true
+		}
+	}
+
+	add(u.Path)
+	for name, values := range u.Query() {
+		add(name)
+		for _, v := range values {
+			add(v)
+		}
+	}
+
+	return words
+}
+
 // MakeRequestFull also returns the response Content-Type and the User-Agent sent.
 // Taking body and Content-Type from one response avoids a second request per URL.
 func MakeRequestFull(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int, string, string) {
@@ -125,9 +180,11 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
 		return nil, "", 0, "", ""
 	}
-	endpoint := u.RawPath + "?" + u.RawQuery
+	// Match whole words rather than substrings so "/store/order" is flagged
+	// while "/border" is not.
+	words := requestWords(u)
 	for _, v := range dangerousStrings {
-		if os.Args[1] == "automate" && !force && strings.Contains(endpoint, v) && !strings.Contains(strings.Join(safeWords, ","), v) {
+		if os.Args[1] == "automate" && !force && words[v] && !slices.ContainsFunc(safeWords, func(s string) bool { return strings.EqualFold(s, v) }) {
 			userChoice = ""
 			if avoidDangerousRequests == "y" {
 				return nil, "", 0, "", ""

@@ -3,7 +3,9 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -101,6 +103,10 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						targetURL := fmt.Sprintf("%s%s%s", apiTarget, basePath, pathName)
 						curl := fmt.Sprintf("curl -X %s \"%s\"", strings.ToUpper(method), targetURL)
 						var bodyData string
+						// curlBodyArg is the shell-quoted rendering of bodyData that is
+						// appended to curl once, after every parameter is known.
+						var curlBodyArg string
+						var multipartBody bool
 
 						// Extracts the expected parameters from the parameters object
 						if params, ok := opMap["parameters"].([]interface{}); ok {
@@ -136,27 +142,14 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 													// Handle based on parameter location
 													if in == "query" {
 														// Query params with object schema: add each property to query string
-														for propertyItem, propertyValue := range exampleMap {
-															pVal := fmt.Sprintf("%v", propertyValue)
-															if strings.Contains(curl, "?") || strings.Contains(targetURL, "?") {
-																targetURL += fmt.Sprintf("&%s=%s", propertyItem, pVal)
-															} else {
-																targetURL += fmt.Sprintf("?%s=%s", propertyItem, pVal)
-															}
+														for _, propertyItem := range slices.Sorted(maps.Keys(exampleMap)) {
+															targetURL = appendQueryParam(targetURL, propertyItem, exampleMap[propertyItem])
 														}
 														handledAsObject = true
 													} else if in == "body" {
 														// Body params with object schema: add each property to body data
-														for propertyItem, propertyValue := range exampleMap {
-															pVal := fmt.Sprintf("%v", propertyValue)
-															if strings.Contains(curl, "-d '") {
-																bodyData += fmt.Sprintf("&%s=%s", propertyItem, pVal)
-																curl = strings.TrimSuffix(curl, "'")
-																curl += fmt.Sprintf("&%s=%s'", propertyItem, pVal)
-															} else {
-																bodyData += fmt.Sprintf("%s=%s", propertyItem, pVal)
-																curl += fmt.Sprintf(" -d '%s=%s'", propertyItem, pVal)
-															}
+														for _, propertyItem := range slices.Sorted(maps.Keys(exampleMap)) {
+															bodyData = appendFormField(bodyData, propertyItem, exampleMap[propertyItem])
 														}
 														handledAsObject = true
 													}
@@ -199,24 +192,15 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										if !handledAsObject {
 											switch in {
 											case "query":
-												if strings.Contains(curl, "?") || strings.Contains(targetURL, "?") {
-													targetURL += fmt.Sprintf("&%s=%s", name, pValue)
-												} else {
-													targetURL += fmt.Sprintf("?%s=%s", name, pValue)
-												}
+												targetURL = appendQueryParam(targetURL, name, pValue)
 											case "path":
-												targetURL = strings.Replace(targetURL, "{"+name+"}", pValue, 1)
+												targetURL = replacePathParam(targetURL, name, pValue)
 											case "header":
-												curl += fmt.Sprintf(" -H \"%s: %s\"", name, pValue)
+												// A header value is not a URL component, so it is shell-quoted
+												// for the printed command but never percent-encoded.
+												curl += " -H " + shellSingleQuote(name+": "+pValue)
 											case "body":
-												if strings.Contains(curl, "-d '") {
-													bodyData += fmt.Sprintf("&%s=%s", name, pValue)
-													curl = strings.TrimSuffix(curl, "'")
-													curl += fmt.Sprintf("&%s=%s'", name, pValue)
-												} else {
-													bodyData += fmt.Sprintf("%s=%s", name, pValue)
-													curl += fmt.Sprintf(" -d '%s=%s'", name, pValue)
-												}
+												bodyData = appendFormField(bodyData, name, pValue)
 											}
 										}
 									}
@@ -253,40 +237,39 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 												bodyBytes, err := json.Marshal(example)
 												if err == nil {
 													bodyData = string(bodyBytes)
-													curl += fmt.Sprintf(" -H \"Content-Type: application/json\" -d '%s'", bodyBytes)
+													curl += " -H " + shellSingleQuote("Content-Type: application/json")
 												}
 											}
 											if cType == "application/xml" || cType == "text/xml" {
 												if obj, ok := example.(map[string]interface{}); ok {
-													xml := XmlFromObject(obj)
-													bodyData = xml
-													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, xml)
+													bodyData = XmlFromObject(obj)
+													curl += " -H " + shellSingleQuote("Content-Type: "+cType)
 												}
 											}
 											if cType == "application/x-www-form-urlencoded" {
 												if obj, ok := example.(map[string]interface{}); ok {
-													var formParts []string
-													for k, v := range obj {
-														formParts = append(formParts, fmt.Sprintf("%s=%v", k, v))
-													}
-													bodyData = strings.Join(formParts, "&")
-													curl += fmt.Sprintf(" -H \"Content-Type: %s\" -d '%s'", cType, bodyData)
+													bodyData = encodeFormBody(obj)
+													curl += " -H " + shellSingleQuote("Content-Type: "+cType)
 												}
 											}
 											if cType == "multipart/form-data" {
 												if obj, ok := example.(map[string]interface{}); ok {
+													keys := slices.Sorted(maps.Keys(obj))
 													var buf bytes.Buffer
 													mw := multipart.NewWriter(&buf)
-													for k, v := range obj {
-														_ = mw.WriteField(k, fmt.Sprintf("%v", v))
+													for _, k := range keys {
+														_ = mw.WriteField(k, fmt.Sprintf("%v", obj[k]))
 													}
 													_ = mw.Close()
 													bodyData = buf.String()
+													// multipart.Writer owns this wire format, so the body is
+													// never appended to curl as a -d argument.
+													multipartBody = true
 													// Replace the bare multipart/form-data Content-Type
 													// (set earlier in the loop) with a boundary-aware one.
 													EnforceSingleContentType(mw.FormDataContentType())
-													for k, v := range obj {
-														curl += fmt.Sprintf(" -F \"%s=%v\"", k, v)
+													for _, k := range keys {
+														curl += " -F " + shellSingleQuote(fmt.Sprintf("%s=%v", k, obj[k]))
 													}
 												}
 											}
@@ -294,6 +277,13 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 									}
 								}
 							}
+						}
+
+						// Compose the body argument once, from bodyData, so the bytes that are
+						// sent and the printed curl command cannot drift apart.
+						if bodyData != "" && !multipartBody {
+							curlBodyArg = shellSingleQuote(bodyData)
+							curl += " -d " + curlBodyArg
 						}
 
 						// Update the curl command with the final targetURL (which may have been modified with query params)
@@ -366,8 +356,8 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 							if strings.ToLower(prepareFor) == "sqlmap" {
 								preparedCommand = strings.Replace(preparedCommand, "curl", "sqlmap", 1)
 								preparedCommand = strings.Replace(preparedCommand, "-X "+strings.ToUpper(method), "--method="+strings.ToUpper(method)+" -u", 1)
-								if bodyData != "" {
-									preparedCommand = strings.Replace(preparedCommand, "-d '"+bodyData+"'", "--data='"+bodyData+"'", 1)
+								if curlBodyArg != "" {
+									preparedCommand = strings.Replace(preparedCommand, "-d "+curlBodyArg, "--data="+curlBodyArg, 1)
 								}
 								preparedCommand = "$ " + preparedCommand
 							} else if prepareFor == "curl" {
@@ -755,6 +745,75 @@ func normalizeBasePath(path string) string {
 	return path
 }
 
+// encodePair returns an encoded "name=value" pair for a query string or an
+// x-www-form-urlencoded body. This and replacePathParam are the only places
+// the --raw-values escape hatch is honored, so the printed curl command and
+// the request that is actually sent can never disagree.
+func encodePair(name string, value interface{}) string {
+	v := fmt.Sprintf("%v", value)
+	if rawValues {
+		return name + "=" + v
+	}
+	return url.QueryEscape(name) + "=" + url.QueryEscape(v)
+}
+
+// appendQueryParam returns rawURL with an encoded pair appended, using "?" or
+// "&" depending on whether rawURL already carries a query string.
+func appendQueryParam(rawURL, name string, value interface{}) string {
+	sep := "?"
+	if strings.Contains(rawURL, "?") {
+		sep = "&"
+	}
+	return rawURL + sep + encodePair(name, value)
+}
+
+// replacePathParam substitutes the first {name} placeholder in rawURL with a
+// path-escaped value so a "/", "?" or "#" cannot re-segment the URL.
+func replacePathParam(rawURL, name, value string) string {
+	if !rawValues {
+		value = url.PathEscape(value)
+	}
+	return strings.Replace(rawURL, "{"+name+"}", value, 1)
+}
+
+// appendFormField returns an x-www-form-urlencoded body with an encoded pair
+// appended, separated by "&" when body is not empty.
+func appendFormField(body, name string, value interface{}) string {
+	pair := encodePair(name, value)
+	if body == "" {
+		return pair
+	}
+	return body + "&" + pair
+}
+
+// encodeFormBody serializes obj as an x-www-form-urlencoded body with keys in
+// sorted order so repeated runs produce identical output.
+func encodeFormBody(obj map[string]interface{}) string {
+	var body string
+	for _, k := range slices.Sorted(maps.Keys(obj)) {
+		body = appendFormField(body, k, obj[k])
+	}
+	return body
+}
+
+// shellSingleQuote wraps s in single quotes for a printed shell command,
+// escaping any embedded single quote the POSIX way (close, escape, reopen) so
+// the command stays runnable. This is presentation only and is not affected
+// by --raw-values.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// escapeXmlText returns s with XML metacharacters escaped so a value
+// containing '<', '>' or '&' cannot break out of its element.
+func escapeXmlText(s string) string {
+	var b bytes.Buffer
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		return ""
+	}
+	return b.String()
+}
+
 // ResolveRefWithContext resolves a reference and returns both the resolved schema and the spec it came from
 func ResolveRefWithContext(spec map[string]interface{}, ref string) (map[string]interface{}, map[string]interface{}) {
 	// Handle external references (e.g., "./schemas/user.yaml#/User")
@@ -940,8 +999,9 @@ func TrimHostScheme(apiTarget, fullUrlHost string) (host string) {
 func XmlFromObject(obj map[string]interface{}) string {
 	var b strings.Builder
 
-	for k, v := range obj {
-		switch val := v.(type) {
+	// Sorted keys keep the generated body identical between runs.
+	for _, k := range slices.Sorted(maps.Keys(obj)) {
+		switch val := obj[k].(type) {
 		case map[string]interface{}:
 			b.WriteString("<" + k + ">")
 			b.WriteString(XmlFromObject(val))
@@ -952,12 +1012,12 @@ func XmlFromObject(obj map[string]interface{}) string {
 				if m, ok := item.(map[string]interface{}); ok {
 					b.WriteString(XmlFromObject(m))
 				} else {
-					b.WriteString(XmlFromObject(m))
+					b.WriteString(escapeXmlText(fmt.Sprintf("%v", item)))
 				}
 				b.WriteString("</" + k + ">")
 			}
 		default:
-			b.WriteString(fmt.Sprintf("<%s>%v</%s>", k, val, k))
+			b.WriteString("<" + k + ">" + escapeXmlText(fmt.Sprintf("%v", val)) + "</" + k + ">")
 		}
 	}
 

@@ -918,3 +918,185 @@ func TestExpandSchemaSelfCycleBounded(t *testing.T) {
 		t.Errorf("recursive Node ref should collapse to a bare object, got properties %v", level2.Properties)
 	}
 }
+
+func TestEncodePair(t *testing.T) {
+	cases := []struct {
+		name  string
+		value interface{}
+		want  string
+	}{
+		{name: "q", value: "hello world", want: "q=hello+world"},
+		{name: "a&b", value: "c=d", want: "a%26b=c%3Dd"},
+		{name: "url", value: "https://bishopfox.com", want: "url=https%3A%2F%2Fbishopfox.com"},
+		{name: "email", value: "noreply@localhost.localdomain", want: "email=noreply%40localhost.localdomain"},
+		{name: "p", value: "a+b", want: "p=a%2Bb"},
+		{name: "frag", value: "a#b", want: "frag=a%23b"},
+		{name: "u", value: "naïve", want: "u=na%C3%AFve"},
+		{name: "n", value: 1, want: "n=1"},
+		{name: "t", value: true, want: "t=true"},
+		{name: "plain", value: "bishopfox", want: "plain=bishopfox"},
+	}
+
+	for _, tc := range cases {
+		got := encodePair(tc.name, tc.value)
+		if got != tc.want {
+			t.Errorf("encodePair(%q, %v): expected %q, got %q", tc.name, tc.value, tc.want, got)
+		}
+	}
+}
+
+func TestAppendQueryParam(t *testing.T) {
+	cases := []struct {
+		url   string
+		name  string
+		value interface{}
+		want  string
+	}{
+		{url: "https://h/pet", name: "status", value: "sold", want: "https://h/pet?status=sold"},
+		{url: "https://h/pet?a=1", name: "b", value: "2", want: "https://h/pet?a=1&b=2"},
+	}
+
+	for _, tc := range cases {
+		got := appendQueryParam(tc.url, tc.name, tc.value)
+		if got != tc.want {
+			t.Errorf("appendQueryParam(%q, %q, %v): expected %q, got %q", tc.url, tc.name, tc.value, tc.want, got)
+		}
+	}
+
+	// A hostile value must not be able to add parameters or a fragment.
+	got := appendQueryParam("https://h/pet", "q", "x&injected=1#frag?y=2")
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("appendQueryParam produced an unparseable URL %q: %v", got, err)
+	}
+	if u.Fragment != "" {
+		t.Errorf("expected no fragment in %q, got %q", got, u.Fragment)
+	}
+	if len(u.Query()) != 1 {
+		t.Errorf("expected exactly 1 query parameter in %q, got %d", got, len(u.Query()))
+	}
+	if u.Query().Get("q") != "x&injected=1#frag?y=2" {
+		t.Errorf("value did not round-trip: got %q", u.Query().Get("q"))
+	}
+}
+
+func TestReplacePathParam(t *testing.T) {
+	const base = "https://h/v2/pet/{petId}"
+
+	got := replacePathParam(base, "petId", "a/b?c#d")
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("replacePathParam produced an unparseable URL %q: %v", got, err)
+	}
+	if want := strings.Count("/v2/pet/x", "/"); strings.Count(u.EscapedPath(), "/") != want {
+		t.Errorf("value re-segmented the path: %q has %d separators, expected %d", u.EscapedPath(), strings.Count(u.EscapedPath(), "/"), want)
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		t.Errorf("value leaked into query/fragment: query=%q fragment=%q", u.RawQuery, u.Fragment)
+	}
+	if u.Path != "/v2/pet/a/b?c#d" {
+		t.Errorf("value did not round-trip: got %q", u.Path)
+	}
+
+	if got := replacePathParam(base, "other", "x"); got != base {
+		t.Errorf("an unmatched placeholder should be left intact, got %q", got)
+	}
+
+	if got := replacePathParam("https://h/{a}/{a}", "a", "x"); got != "https://h/x/{a}" {
+		t.Errorf("expected only the first placeholder to be replaced, got %q", got)
+	}
+}
+
+func TestAppendFormField(t *testing.T) {
+	got := appendFormField("", "name", "a b")
+	if want := "name=a+b"; got != want {
+		t.Errorf("appendFormField on an empty body: expected %q, got %q", want, got)
+	}
+
+	got = appendFormField(got, "note", "x&y=z")
+	if want := "name=a+b&note=x%26y%3Dz"; got != want {
+		t.Errorf("appendFormField on an existing body: expected %q, got %q", want, got)
+	}
+}
+
+func TestEncodeFormBody(t *testing.T) {
+	obj := map[string]interface{}{
+		"zeta":  "last",
+		"alpha": "first",
+		"mid":   2,
+	}
+
+	want := "alpha=first&mid=2&zeta=last"
+	for i := 0; i < 50; i++ {
+		if got := encodeFormBody(obj); got != want {
+			t.Fatalf("encodeFormBody is not deterministic: expected %q, got %q", want, got)
+		}
+	}
+}
+
+func TestShellSingleQuote(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: "''"},
+		{in: "abc", want: "'abc'"},
+		{in: `it's`, want: `'it'\''s'`},
+		{in: `{"a":"b"}`, want: `'{"a":"b"}'`},
+	}
+
+	for _, tc := range cases {
+		got := shellSingleQuote(tc.in)
+		if got != tc.want {
+			t.Errorf("shellSingleQuote(%q): expected %q, got %q", tc.in, tc.want, got)
+		}
+	}
+}
+
+func TestXmlFromObjectEscapesValues(t *testing.T) {
+	got := XmlFromObject(map[string]interface{}{"note": "a < b & c"})
+	if want := "<note>a &lt; b &amp; c</note>"; got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+
+	// A scalar array element used to be emitted as an empty element.
+	got = XmlFromObject(map[string]interface{}{"tag": []interface{}{"x", "y"}})
+	if want := "<tag>x</tag><tag>y</tag>"; got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+
+	obj := map[string]interface{}{"zeta": 1, "alpha": 2, "mid": 3}
+	want := "<alpha>2</alpha><mid>3</mid><zeta>1</zeta>"
+	for i := 0; i < 50; i++ {
+		if got := XmlFromObject(obj); got != want {
+			t.Fatalf("XmlFromObject is not deterministic: expected %q, got %q", want, got)
+		}
+	}
+}
+
+func TestRawValuesSkipsEncoding(t *testing.T) {
+	oldRawValues := rawValues
+	rawValues = true
+	defer func() { rawValues = oldRawValues }()
+
+	if got, want := encodePair("a b", "c&d"), "a b=c&d"; got != want {
+		t.Errorf("encodePair: expected %q, got %q", want, got)
+	}
+	if got, want := appendQueryParam("https://h/p", "q", "a b"), "https://h/p?q=a b"; got != want {
+		t.Errorf("appendQueryParam: expected %q, got %q", want, got)
+	}
+	if got, want := appendFormField("", "q", "a b"), "q=a b"; got != want {
+		t.Errorf("appendFormField: expected %q, got %q", want, got)
+	}
+	if got, want := replacePathParam("https://h/{id}", "id", "a/b"), "https://h/a/b"; got != want {
+		t.Errorf("replacePathParam: expected %q, got %q", want, got)
+	}
+
+	// --raw-values covers percent-encoding only.
+	if got, want := shellSingleQuote(`it's`), `'it'\''s'`; got != want {
+		t.Errorf("shellSingleQuote should still escape: expected %q, got %q", want, got)
+	}
+	if got, want := escapeXmlText("a < b"), "a &lt; b"; got != want {
+		t.Errorf("escapeXmlText should still escape: expected %q, got %q", want, got)
+	}
+}

@@ -19,6 +19,7 @@ var replayProxy string
 var quiet bool
 var randomUserAgent bool
 var rateLimit int
+var rawValues bool
 var safeWords []string
 var swaggerURL string
 var timeout int64
@@ -81,6 +82,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&replayProxy, "replay-proxy", "", "Replay matched requests using this proxy.")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Do not prompt for user input - uses default values for all requests.")
 	rootCmd.PersistentFlags().BoolVar(&randomUserAgent, "randomize-user-agent", false, "Randomizes the user agent string. Default is 'false'.")
+	rootCmd.PersistentFlags().BoolVar(&rawValues, "raw-values", false, "Do not URL-encode generated parameter names and values. Useful for parser-differential and WAF testing.")
 	// rootCmd.PersistentFlags().IntVarP(&rateLimit, "rate", "r", 15, "Limit the number of requests per second.") // NEED TO RE-IMPLEMENT RATE LIMIT
 	rootCmd.PersistentFlags().StringArrayVarP(&safeWords, "safe-word", "s", nil, "Avoids 'dangerous word' check for the specified word(s). Multiple flags are accepted.")
 	rootCmd.PersistentFlags().StringVarP(&apiTarget, "target", "T", "", "Manually set a target for the requests to be made if separate from the host the documentation resides on.")
