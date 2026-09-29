@@ -40,25 +40,23 @@ $ export PATH=$PATH:~/go/bin
 $ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080               
 
 Gathering API details.
-Title: Swagger Petstore
-Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
-✓  GET  200  /v2/pet/findByStatus
-✓  GET  200  /v2/user/logout
-⚠  POST  400  /v2/user/createWithArray
-⚠  POST  400  /v2/store/order
-✗  GET  404  /v2/store/order/1
-⚠  POST  400  /v2/pet
-⚠  PUT  415  /v2/pet
-⚠  POST  400  /v2/user/createWithList
-✗  GET  404  /v2/user/bishopfox
-⚠  PUT  415  /v2/user/bishopfox
-⚠  POST  400  /v2/user
-⚠  POST  415  /v2/pet/1/uploadImage
-✓  GET  200  /v2/pet/findByTags
-✗  GET  404  /v2/pet/1
-⚠  POST  415  /v2/pet/1
-✓  GET  200  /v2/store/inventory
-✓  GET  200  /v2/user/login
+⚠  POST     500  /v2/pet
+⚠  PUT      500  /v2/pet
+✓  GET      200  /v2/pet/findByStatus
+✓  GET      200  /v2/pet/findByTags
+✓  GET      200  /v2/pet/1
+✓  POST     200  /v2/pet/1
+⚠  POST     N/A  /v2/pet/1/uploadImage
+✓  GET      200  /v2/store/inventory
+⚠  POST     N/A  /v2/store/order
+⚠  GET      N/A  /v2/store/order/1
+✓  POST     200  /v2/user
+⚠  POST     N/A  /v2/user/createWithArray
+⚠  POST     N/A  /v2/user/createWithList
+✓  GET      200  /v2/user/login
+✓  GET      200  /v2/user/logout
+✓  GET      200  /v2/user/bishopfox
+✓  PUT      200  /v2/user/bishopfox
 ```
 
 You can use the `--replay-proxy` flag to replay matched requests through a separate proxy (e.g., Burp Suite). This lets you route all traffic through one proxy (or direct) while only sending interesting results to your interception proxy:
@@ -79,42 +77,35 @@ You can also request verbose output to see the partial (or full) response:
 $ sj automate -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080 -v           
 
 Gathering API details.
-Title: Swagger Petstore
-Description: This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.
-✗  GET  404  /v2/user/bishopfox
-   {"code":1,"type":"error","message":"User not found
-⚠  PUT  415  /v2/user/bishopfox
-   {"code":415,"type":"unknown","message":"com.sun.je
-✓  GET  200  /v2/user/logout
-   {"code":200,"type":"unknown","message":"ok"}
-⚠  POST  400  /v2/user/createWithArray
-   {"code":400,"type":"unknown","message":"bad input"
-⚠  POST  400  /v2/user/createWithList
-   {"code":400,"type":"unknown","message":"bad input"
-✗  GET  404  /v2/pet/1
-   {"code":1,"type":"error","message":"Pet not found"
-⚠  POST  415  /v2/pet/1
-   {"code":415,"type":"unknown"}
-✓  GET  200  /v2/store/inventory
-   {"sold":117,"string":26,"invalidStatus":1,"-1":1,"
-⚠  POST  400  /v2/store/order
-   {"code":400,"type":"unknown","message":"bad input"
-✓  GET  200  /v2/user/login
+⚠  POST     500  /v2/pet
+   {"code":500,"type":"unknown","message":"something 
+⚠  PUT      500  /v2/pet
+   {"code":500,"type":"unknown","message":"something 
+✓  GET      200  /v2/pet/findByStatus
+   []
+✓  GET      200  /v2/pet/findByTags
+   []
+✓  GET      200  /v2/pet/1
+   {"id":1,"category":{"id":1,"name":"cat"},"name":"d
+✓  POST     200  /v2/pet/1
+   {"code":200,"type":"unknown","message":"1"}
+⚠  POST     N/A  /v2/pet/1/uploadImage
+✓  GET      200  /v2/store/inventory
+   {"sold":115,"bishopfox":1,"SOLD":1,"string":224,"d
+⚠  POST     N/A  /v2/store/order
+⚠  GET      N/A  /v2/store/order/1
+✓  POST     200  /v2/user
+   {"code":200,"type":"unknown","message":"1"}
+⚠  POST     N/A  /v2/user/createWithArray
+⚠  POST     N/A  /v2/user/createWithList
+✓  GET      200  /v2/user/login
    {"code":200,"type":"unknown","message":"logged in 
-⚠  POST  400  /v2/pet
-   {"code":400,"type":"unknown","message":"bad input"
-⚠  PUT  415  /v2/pet
-   {"code":415,"type":"unknown","message":"com.sun.je
-✓  GET  200  /v2/pet/findByStatus
-   []
-✓  GET  200  /v2/pet/findByTags
-   []
-✗  GET  404  /v2/store/order/1
-   {"code":1,"type":"error","message":"Order not foun
-⚠  POST  400  /v2/user
-   {"code":400,"type":"unknown","message":"bad input"
-⚠  POST  415  /v2/pet/1/uploadImage
-   {"code":415,"type":"unknown"}
+✓  GET      200  /v2/user/logout
+   {"code":200,"type":"unknown","message":"ok"}
+✓  GET      200  /v2/user/bishopfox
+   {"id":1,"username":"bishopfox","firstName":"bishop
+✓  PUT      200  /v2/user/bishopfox
+   {"code":200,"type":"unknown","message":"1"}
 ```
 
 > Use the `prepare` command to prepare a list of commands for manual testing. Currently supports both `curl` and `sqlmap`. You will likely have to modify these slightly.
@@ -122,23 +113,23 @@ Description: This is a sample server Petstore server.  You can find out more abo
 ```bash
 $ sj prepare -u https://petstore.swagger.io/v2/swagger.json -qi -p http://127.0.0.1:8080
 
-$ curl -X POST "https://petstore.swagger.io/v2/pet" -d 'category=map%5Bid%3A1+name%3Abishopfox%5D&id=1&name=doggie&photoUrls=https%3A%2F%2Fbishopfox.com&status=available&tags=%5Bmap%5Bid%3A1+name%3Abishopfox%5D%5D'
-$ curl -X PUT "https://petstore.swagger.io/v2/pet" -d 'category=map%5Bid%3A1+name%3Abishopfox%5D&id=1&name=doggie&photoUrls=https%3A%2F%2Fbishopfox.com&status=available&tags=%5Bmap%5Bid%3A1+name%3Abishopfox%5D%5D'
+$ curl -X POST "https://petstore.swagger.io/v2/pet" -H 'Content-Type: application/json' -d '{"category":{"id":1,"name":"bishopfox"},"id":1,"name":"doggie","photoUrls":"https://bishopfox.com","status":"available","tags":[{"id":1,"name":"bishopfox"}]}'
+$ curl -X PUT "https://petstore.swagger.io/v2/pet" -H 'Content-Type: application/json' -d '{"category":{"id":1,"name":"bishopfox"},"id":1,"name":"doggie","photoUrls":"https://bishopfox.com","status":"available","tags":[{"id":1,"name":"bishopfox"}]}'
 $ curl -X GET "https://petstore.swagger.io/v2/pet/findByStatus?status=1"
 $ curl -X GET "https://petstore.swagger.io/v2/pet/findByTags?tags=1"
 $ curl -X GET "https://petstore.swagger.io/v2/pet/1"
-$ curl -X POST "https://petstore.swagger.io/v2/pet/1"
-$ curl -X POST "https://petstore.swagger.io/v2/pet/1/uploadImage"
+$ curl -X POST "https://petstore.swagger.io/v2/pet/1" -H 'Content-Type: application/x-www-form-urlencoded' -d 'name=bishopfox&status=bishopfox'
+$ curl -X POST "https://petstore.swagger.io/v2/pet/1/uploadImage" -H 'Content-Type: application/x-www-form-urlencoded' -d 'additionalMetadata=bishopfox&file=1'
 $ curl -X GET "https://petstore.swagger.io/v2/store/inventory"
-$ curl -X POST "https://petstore.swagger.io/v2/store/order" -d 'complete=true&id=1&petId=1&quantity=1&shipDate=1990-01-01&status=placed'
+$ curl -X POST "https://petstore.swagger.io/v2/store/order" -H 'Content-Type: application/json' -d '{"complete":true,"id":1,"petId":1,"quantity":1,"shipDate":"1990-01-01","status":"placed"}'
 $ curl -X GET "https://petstore.swagger.io/v2/store/order/1"
-$ curl -X POST "https://petstore.swagger.io/v2/user" -d 'email=noreply%40localhost.localdomain&firstName=bishopfox&id=1&lastName=bishopfox&password=bishopfox&phone=bishopfox&userStatus=1&username=bishopfox'
-$ curl -X POST "https://petstore.swagger.io/v2/user/createWithArray" -d 'body=%5Bmap%5Bemail%3Anoreply%40localhost.localdomain+firstName%3Abishopfox+id%3A1+lastName%3Abishopfox+password%3Abishopfox+phone%3Abishopfox+userStatus%3A1+username%3Abishopfox%5D%5D'
-$ curl -X POST "https://petstore.swagger.io/v2/user/createWithList" -d 'body=%5Bmap%5Bemail%3Anoreply%40localhost.localdomain+firstName%3Abishopfox+id%3A1+lastName%3Abishopfox+password%3Abishopfox+phone%3Abishopfox+userStatus%3A1+username%3Abishopfox%5D%5D'
+$ curl -X POST "https://petstore.swagger.io/v2/user" -H 'Content-Type: application/json' -d '{"email":"noreply@localhost.localdomain","firstName":"bishopfox","id":1,"lastName":"bishopfox","password":"bishopfox","phone":"bishopfox","userStatus":1,"username":"bishopfox"}'
+$ curl -X POST "https://petstore.swagger.io/v2/user/createWithArray" -H 'Content-Type: application/json' -d '[{"email":"noreply@localhost.localdomain","firstName":"bishopfox","id":1,"lastName":"bishopfox","password":"bishopfox","phone":"bishopfox","userStatus":1,"username":"bishopfox"}]'
+$ curl -X POST "https://petstore.swagger.io/v2/user/createWithList" -H 'Content-Type: application/json' -d '[{"email":"noreply@localhost.localdomain","firstName":"bishopfox","id":1,"lastName":"bishopfox","password":"bishopfox","phone":"bishopfox","userStatus":1,"username":"bishopfox"}]'
 $ curl -X GET "https://petstore.swagger.io/v2/user/login?username=bishopfox&password=bishopfox"
 $ curl -X GET "https://petstore.swagger.io/v2/user/logout"
 $ curl -X GET "https://petstore.swagger.io/v2/user/bishopfox"
-$ curl -X PUT "https://petstore.swagger.io/v2/user/bishopfox" -d 'email=noreply%40localhost.localdomain&firstName=bishopfox&id=1&lastName=bishopfox&password=bishopfox&phone=bishopfox&userStatus=1&username=bishopfox'
+$ curl -X PUT "https://petstore.swagger.io/v2/user/bishopfox" -H 'Content-Type: application/json' -d '{"email":"noreply@localhost.localdomain","firstName":"bishopfox","id":1,"lastName":"bishopfox","password":"bishopfox","phone":"bishopfox","userStatus":1,"username":"bishopfox"}'
 ```
 
 > Use the `endpoints` command to generate a list of raw endpoints from the provided definition file.
