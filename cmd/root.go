@@ -67,7 +67,7 @@ $ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 		}
 		return nil
 	},
-	Version: "2.8.2",
+	Version: "2.8.3",
 	// Errors and usage are surfaced once by Execute() with our own styling, so
 	// cobra should not also print them on a RunE failure.
 	SilenceErrors: true,
