@@ -118,6 +118,13 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						// as a single Cookie header. formBody accumulates "in: formData"
 						// (Swagger v2) fields, which become one urlencoded variant.
 						var cookiePairs []string
+						// Seed with any cookie-based API keys from a security scheme
+						// (apiKey with "in: cookie") so they fold into the same Cookie
+						// header as the operation's own cookie params, mirroring how
+						// authQueryParams seeds the query string above.
+						for _, cp := range authCookieParams {
+							cookiePairs = append(cookiePairs, encodePair(cp.name, cp.value))
+						}
 						var formBody string
 						var hasFormData bool
 

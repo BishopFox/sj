@@ -19,6 +19,10 @@ var (
 	// string (apiKey with "in: query"). BuildRequestsFromPaths appends each one
 	// to every operation's URL, mirroring how Headers carries header-based auth.
 	authQueryParams []queryAuthParam
+	// authCookieParams holds API keys that a security scheme places in a cookie
+	// (apiKey with "in: cookie"). BuildRequestsFromPaths merges each one into the
+	// single Cookie header it already builds from per-operation cookie params.
+	authCookieParams []queryAuthParam
 )
 
 // queryAuthParam is a single name/value pair to add to request query strings.
@@ -94,31 +98,44 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 		if typ, ok := scheme["type"].(string); ok {
 			switch typ {
 			case "http":
-				if schemeType := scheme["scheme"]; schemeType != nil {
-					switch schemeType {
-					case "basic":
-						if quiet {
-							autoApplyBasicAuth = "n"
-							printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+				schemeName, _ := scheme["scheme"].(string)
+				switch strings.ToLower(schemeName) {
+				case "basic":
+					if quiet {
+						autoApplyBasicAuth = "n"
+						printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
+					} else {
+						printInfo("Basic Authentication is accepted. Supply a username and password? (y/N)\n")
+						fmt.Scanln(&autoApplyBasicAuth)
+						autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
+						if autoApplyBasicAuth == "y" {
+							printInfo("Enter a username.")
+							fmt.Scanln(&basicAuthUser)
+							printInfo("Enter a password.")
+							fmt.Scanln(&basicAuthPass)
+							basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
+							basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
+							printInfo("Using %s as the Basic Auth value.\n", basicAuthString)
+							Headers = append(Headers, "Authorization: Basic "+basicAuthString)
 						} else {
-							printInfo("Basic Authentication is accepted. Supply a username and password? (y/N)\n")
-							fmt.Scanln(&autoApplyBasicAuth)
-							autoApplyBasicAuth = strings.ToLower(autoApplyBasicAuth)
-							if autoApplyBasicAuth == "y" {
-								printInfo("Enter a username.")
-								fmt.Scanln(&basicAuthUser)
-								printInfo("Enter a password.")
-								fmt.Scanln(&basicAuthPass)
-								basicAuth = []byte(basicAuthUser + ":" + basicAuthPass)
-								basicAuthString = base64.StdEncoding.EncodeToString(basicAuth)
-								printInfo("Using %s as the Basic Auth value.\n", basicAuthString)
-								Headers = append(Headers, "Authorization: Basic "+basicAuthString)
-							} else {
-								printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
-							}
+							printWarn("A basic authentication header is accepted. Review the spec and craft a header manually using the -H flag.")
 						}
-					case "bearer":
+					}
+				case "bearer":
+					if quiet {
+						autoApplyBearer = "n"
 						printWarn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
+					} else {
+						printInfo("A bearer token is accepted. Would you like to provide one? (y/N)\n")
+						fmt.Scanln(&autoApplyBearer)
+						autoApplyBearer = strings.ToLower(autoApplyBearer)
+						if autoApplyBearer == "y" {
+							printInfo("What value would you like to use for the Bearer Token? ")
+							fmt.Scanln(&bearerToken)
+							Headers = append(Headers, "Authorization: Bearer "+bearerToken)
+						} else {
+							printWarn("A bearer token is accepted. Review the spec and craft a token manually using the -H flag.")
+						}
 					}
 				}
 			case "apiKey":
@@ -145,36 +162,37 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 							authQueryParams = append(authQueryParams, queryAuthParam{name: apiKeyName, value: apiKey})
 						}
 					case "header":
-						if mechanism == "bearer" {
-							printInfo("A bearer token is accepted. Would you like to provide one? (y/N)\n")
+						if nameVal, ok := scheme["name"].(string); ok {
+							printInfo("An API key can be provided via the header %s. Would you like to apply one? (y/N)\n", nameVal)
 							if quiet {
-								autoApplyBearer = "n"
+								autoApplyAPIKey = "n"
 							} else {
-								fmt.Scanln(&autoApplyBearer)
-								autoApplyBearer = strings.ToLower(autoApplyBearer)
+								fmt.Scanln(&autoApplyAPIKey)
+								autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
 							}
-							if autoApplyBearer == "y" {
-								printInfo("What value would you like to use for the Bearer Token? ")
-								fmt.Scanln(&bearerToken)
-								Headers = append(Headers, "Authorization: Bearer "+bearerToken)
+							if autoApplyAPIKey == "y" {
+								apiKeyName = nameVal
+								printInfo("What value would you like to use for the API key (%s)?", apiKeyName)
+								fmt.Scanln(&apiKey)
+								Headers = append(Headers, nameVal+": "+apiKey)
+							}
+						}
+					case "cookie":
+						if nameVal, ok := scheme["name"].(string); ok {
+							printInfo("An API key can be provided via the cookie %s. Would you like to apply one? (y/N)\n", nameVal)
+							if quiet {
+								autoApplyAPIKey = "n"
 							} else {
-								printWarn("A bearer token is accepted. Review the spec and craft a header manually using the -H flag.")
+								fmt.Scanln(&autoApplyAPIKey)
+								autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
 							}
-						} else {
-							if nameVal, ok := scheme["name"].(string); ok {
-								printInfo("An API key can be provided via the header %s. Would you like to apply one? (y/N)\n", nameVal)
-								if quiet {
-									autoApplyAPIKey = "n"
-								} else {
-									fmt.Scanln(&autoApplyAPIKey)
-									autoApplyAPIKey = strings.ToLower(autoApplyAPIKey)
-								}
-								if autoApplyAPIKey == "y" {
-									apiKeyName = nameVal
-									printInfo("What value would you like to use for the API key (%s)?", apiKeyName)
-									fmt.Scanln(&apiKey)
-									Headers = append(Headers, nameVal+": "+apiKey)
-								}
+							if autoApplyAPIKey == "y" {
+								apiKeyName = nameVal
+								printInfo("What value would you like to use for the API key (%s)?", apiKeyName)
+								fmt.Scanln(&apiKey)
+								// Record the key so BuildRequestsFromPaths merges it into
+								// the Cookie header it builds for every request.
+								authCookieParams = append(authCookieParams, queryAuthParam{name: apiKeyName, value: apiKey})
 							}
 						}
 					}
