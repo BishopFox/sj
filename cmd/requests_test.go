@@ -112,7 +112,7 @@ func TestRedirectPreservesBodyAndQuery(t *testing.T) {
 	}}
 
 	want := `{"name":"bishopfox"}`
-	_, _, sc, _, _ := MakeRequestFull(client, "PUT", redirector.URL+"/first", 30, bytes.NewReader([]byte(want)))
+	_, _, sc, _, _, _ := MakeRequestFull(client, "PUT", redirector.URL+"/first", 30, bytes.NewReader([]byte(want)))
 
 	if sc != http.StatusOK {
 		t.Errorf("redirect not followed: status %d, want %d", sc, http.StatusOK)

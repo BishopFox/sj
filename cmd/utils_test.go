@@ -34,7 +34,7 @@ func TestSwaggerV2SchemeHandling(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -75,7 +75,7 @@ func TestExternalReferenceResolution(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -122,7 +122,7 @@ func TestNestedExternalReferences(t *testing.T) {
 		return
 	}
 
-	externalSpec := SafelyUnmarshalSpec(data)
+	externalSpec, _ := SafelyUnmarshalSpec(data)
 	if externalSpec == nil {
 		t.Fatal("Failed to unmarshal external schema")
 	}
@@ -180,7 +180,7 @@ func TestQueryObjectParameterHandling(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -243,7 +243,7 @@ func TestRequestBodyContextPreservation(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -298,7 +298,7 @@ func TestDefaultValueHandling(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -366,7 +366,7 @@ func TestJSONCurlQuoting(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -467,7 +467,7 @@ func TestRelativeServerURLHandling(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -546,7 +546,7 @@ func TestTargetFlagPreservesSpecBasePath(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -599,7 +599,7 @@ func TestOpenAPIv3AbsoluteServerURLWithTargetFlag(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -669,7 +669,7 @@ func TestOpenAPIv3AbsoluteServerURLWithoutTargetFlag(t *testing.T) {
 		return
 	}
 
-	spec := SafelyUnmarshalSpec(data)
+	spec, _ := SafelyUnmarshalSpec(data)
 	if spec == nil {
 		t.Fatal("Failed to unmarshal spec")
 	}
@@ -702,6 +702,87 @@ func TestOpenAPIv3AbsoluteServerURLWithoutTargetFlag(t *testing.T) {
 	if endpointPath := basePath + "/users"; endpointPath != "/v1/users" {
 		t.Errorf("Expected endpoints path '/v1/users', got '%s'", endpointPath)
 	}
+}
+
+// withResolveGlobals saves and restores the globals GenerateRequests reads while
+// resolving a target, so these tests don't leak state into one another.
+func withResolveGlobals(t *testing.T, mode string, fn func()) {
+	t.Helper()
+	oldMode, oldSwaggerURL, oldAPITarget, oldBasePath, oldQuiet := Mode, swaggerURL, apiTarget, basePath, quiet
+	defer func() {
+		Mode, swaggerURL, apiTarget, basePath, quiet = oldMode, oldSwaggerURL, oldAPITarget, oldBasePath, oldQuiet
+	}()
+	Mode = mode
+	swaggerURL = ""
+	apiTarget = ""
+	basePath = ""
+	quiet = true
+	fn()
+}
+
+// TestGenerateRequestsMultipleServersDefaultsToFirst verifies that a spec
+// declaring several servers no longer aborts the run (previously a fatal die()):
+// GenerateRequests resolves against the first declared server instead.
+func TestGenerateRequestsMultipleServersDefaultsToFirst(t *testing.T) {
+	spec := []byte(`{"openapi":"3.0.0","info":{"title":"t","version":"1"},"servers":[{"url":"https://api1.example.com/v1"},{"url":"https://api2.example.com/v2"}],"paths":{"/users":{"get":{"responses":{"200":{"description":"ok"}}}}}}`)
+
+	withResolveGlobals(t, "endpoints", func() {
+		var err error
+		_ = captureStdout(t, func() { err = GenerateRequests(spec, http.Client{}, nil) })
+		if err != nil {
+			t.Fatalf("expected no error for multiple servers, got: %v", err)
+		}
+		if apiTarget != "https://api1.example.com" {
+			t.Errorf("expected apiTarget to default to first server host, got '%s'", apiTarget)
+		}
+		if basePath != "/v1" {
+			t.Errorf("expected basePath from first server, got '%s'", basePath)
+		}
+	})
+}
+
+// TestGenerateRequestsRelativeServerURLWithoutTargetReturnsError verifies the
+// relative-server-URL-with-no-base case now returns an error (it used to die()
+// and exit the process), so callers can surface it gracefully.
+func TestGenerateRequestsRelativeServerURLWithoutTargetReturnsError(t *testing.T) {
+	spec := []byte(`{"openapi":"3.0.0","info":{"title":"t","version":"1"},"servers":[{"url":"/api"}],"paths":{"/users":{"get":{"responses":{"200":{"description":"ok"}}}}}}`)
+
+	withResolveGlobals(t, "automate", func() {
+		var err error
+		_ = captureStdout(t, func() { err = GenerateRequests(spec, http.Client{}, nil) })
+		if err == nil {
+			t.Fatal("expected an error for relative server URL with no base and no -T, got nil")
+		}
+	})
+}
+
+// TestGenerateRequestsRelativeServerURLEndpointsModeNoError confirms the
+// endpoints-mode exemption is preserved: listing endpoints needs no host, so the
+// same ambiguous spec resolves without error.
+func TestGenerateRequestsRelativeServerURLEndpointsModeNoError(t *testing.T) {
+	spec := []byte(`{"openapi":"3.0.0","info":{"title":"t","version":"1"},"servers":[{"url":"/api"}],"paths":{"/users":{"get":{"responses":{"200":{"description":"ok"}}}}}}`)
+
+	withResolveGlobals(t, "endpoints", func() {
+		var err error
+		_ = captureStdout(t, func() { err = GenerateRequests(spec, http.Client{}, nil) })
+		if err != nil {
+			t.Fatalf("expected no error in endpoints mode, got: %v", err)
+		}
+	})
+}
+
+// TestGenerateRequestsNoServerNoURLReturnsError verifies the no-server-info and
+// no-URL case now returns an error rather than exiting the process.
+func TestGenerateRequestsNoServerNoURLReturnsError(t *testing.T) {
+	spec := []byte(`{"openapi":"3.0.0","info":{"title":"t","version":"1"},"paths":{"/users":{"get":{"responses":{"200":{"description":"ok"}}}}}}`)
+
+	withResolveGlobals(t, "automate", func() {
+		var err error
+		_ = captureStdout(t, func() { err = GenerateRequests(spec, http.Client{}, nil) })
+		if err == nil {
+			t.Fatal("expected an error when no server info and no URL are available, got nil")
+		}
+	})
 }
 
 func TestNormalizeBasePath(t *testing.T) {

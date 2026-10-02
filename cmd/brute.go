@@ -44,7 +44,7 @@ var bruteCmd = &cobra.Command{
 	Use:   "brute",
 	Short: "Sends a series of automated requests to discover hidden API operation definitions.",
 	Long:  `The brute command sends requests to the target to find operation definitions based on commonly used file locations.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 
 		/* // NEED TO RE-IMPLEMENT RATE LIMIT
 		if rateLimit <= 0 {
@@ -58,7 +58,10 @@ var bruteCmd = &cobra.Command{
 			}
 		}
 
-		client, _ := CheckAndConfigureProxy()
+		client, _, err := CheckAndConfigureProxy()
+		if err != nil {
+			return err
+		}
 
 		var allURLs []string
 		u, err := url.Parse(swaggerURL)
@@ -80,7 +83,7 @@ var bruteCmd = &cobra.Command{
 		} else {
 			endpointList, err := os.Open(endpointWordlist)
 			if err != nil {
-				die("failed to open file: %s", err)
+				return fmt.Errorf("failed to open file: %s", err)
 			}
 			defer endpointList.Close()
 
@@ -92,7 +95,7 @@ var bruteCmd = &cobra.Command{
 			}
 
 			if err := scanner.Err(); err != nil {
-				die("failed to read words from file: %s", err)
+				return fmt.Errorf("failed to read words from file: %s", err)
 			}
 		}
 		if rateLimit > 0 && strings.ToLower(outputFormat) != "json" {
@@ -101,7 +104,10 @@ var bruteCmd = &cobra.Command{
 			printInfo("Sending %d requests. This could take a while...\n", len(allURLs))
 		}
 
-		specFound, definitionFile := findDefinitionFile(allURLs, client)
+		specFound, definitionFile, err := findDefinitionFile(allURLs, client)
+		if err != nil {
+			return err
+		}
 		if specFound {
 			definedOperations, err := json.Marshal(definitionFile)
 			if err != nil {
@@ -126,7 +132,7 @@ var bruteCmd = &cobra.Command{
 				}
 			} else {
 				if endpointOnly {
-					return
+					return nil
 				} else {
 					fmt.Println(string(definedOperations))
 				}
@@ -135,6 +141,7 @@ var bruteCmd = &cobra.Command{
 		} else {
 			printErr("\nNo definition file found for:\t%s", swaggerURL)
 		}
+		return nil
 	},
 }
 
@@ -166,45 +173,52 @@ func makeURLs(target string, basePath string, endpoints []string, fileExtension 
 // maxFollowDepth bounds how far brute chases discovered spec references.
 const maxFollowDepth = 3
 
-func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T) {
+func findDefinitionFile(urls []string, client http.Client) (bool, *openapi3.T, error) {
 	seen := make(map[string]bool)
 	for i, url := range urls {
-		if found, checkSpec := checkURLForSpec(url, client, seen, 0); found {
-			return true, checkSpec
+		found, checkSpec, err := checkURLForSpec(url, client, seen, 0)
+		if err != nil {
+			return false, nil, err
+		}
+		if found {
+			return true, checkSpec, nil
 		}
 		writeProgress("Request: %d", i+1)
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 // checkURLForSpec fetches one URL and validates it as an OpenAPI/Swagger
 // definition. For a Swagger UI page, initializer script, or swagger-config JSON,
 // it follows the referenced URLs (bounded by maxFollowDepth and a shared visited
 // set) so specs on non-standard paths are still found.
-func checkURLForSpec(target string, client http.Client, seen map[string]bool, depth int) (bool, *openapi3.T) {
+func checkURLForSpec(target string, client http.Client, seen map[string]bool, depth int) (bool, *openapi3.T, error) {
 	if depth > maxFollowDepth || seen[target] || isExternalDemoSpecURL(target) {
-		return false, nil
+		return false, nil, nil
 	}
 	seen[target] = true
 
 	// One request so body and Content-Type come from the same response (two
 	// separate requests can desync behind a WAF/CDN).
-	bodyBytes, bodyString, _, ctRaw, _ := MakeRequestFull(client, "GET", target, timeout, nil)
+	bodyBytes, bodyString, _, ctRaw, _, reqErr := MakeRequestFull(client, "GET", target, timeout, nil)
+	if reqErr != nil {
+		return false, nil, reqErr
+	}
 	if bodyBytes == nil {
-		return false, nil
+		return false, nil, nil
 	}
 	ct := strings.ToLower(ctRaw)
 
 	// Skip content types that cannot be a spec or reference one.
 	for _, skip := range []string{"image/", "video/", "audio/", "font/", "text/css", "application/zip", "application/pdf"} {
 		if strings.Contains(ct, skip) {
-			return false, nil
+			return false, nil, nil
 		}
 	}
 
 	if looksLikeChallengeResponse(bodyString) {
 		warnWAFChallengeOnce()
-		return false, nil
+		return false, nil, nil
 	}
 
 	// Swagger UI HTML page: follow the references it declares.
@@ -216,14 +230,14 @@ func checkURLForSpec(target string, client http.Client, seen map[string]bool, de
 	// Library bundles are excluded to avoid their internal url: strings.
 	if strings.Contains(ct, "javascript") || strings.HasSuffix(strings.ToLower(urlPath(target)), ".js") {
 		if !looksLikeSwaggerInitCandidate(target) {
-			return false, nil
+			return false, nil, nil
 		}
 		if bodyHasEmbeddedSpec(bodyString) {
 			if jsonContent, ok := ExtractJSONFromJSSpec(bodyBytes); ok {
-				checkSpec := UnmarshalSpec(jsonContent)
+				checkSpec, _ := UnmarshalSpec(jsonContent)
 				if strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3") {
 					printInfo("Found operation definitions embedded in JavaScript file at %s\n", target)
-					return true, checkSpec
+					return true, checkSpec, nil
 				}
 			}
 		}
@@ -240,10 +254,10 @@ func checkURLForSpec(target string, client http.Client, seen map[string]bool, de
 	}
 
 	// Otherwise treat the body as a candidate spec and validate by parsing.
-	checkSpec := UnmarshalSpec(bodyBytes)
+	checkSpec, _ := UnmarshalSpec(bodyBytes)
 	if (strings.HasPrefix(checkSpec.OpenAPI, "2") || strings.HasPrefix(checkSpec.OpenAPI, "3")) && checkSpec.Paths != nil {
 		printInfo("Definition file found: %s\n", target)
-		return true, checkSpec
+		return true, checkSpec, nil
 	}
 
 	// Not a spec: may be a swagger-config document that references one.
@@ -251,13 +265,17 @@ func checkURLForSpec(target string, client http.Client, seen map[string]bool, de
 }
 
 // followReferences recurses into a set of discovered spec/reference URLs.
-func followReferences(refs []string, client http.Client, seen map[string]bool, depth int) (bool, *openapi3.T) {
+func followReferences(refs []string, client http.Client, seen map[string]bool, depth int) (bool, *openapi3.T, error) {
 	for _, ref := range refs {
-		if found, checkSpec := checkURLForSpec(ref, client, seen, depth+1); found {
-			return true, checkSpec
+		found, checkSpec, err := checkURLForSpec(ref, client, seen, depth+1)
+		if err != nil {
+			return false, nil, err
+		}
+		if found {
+			return true, checkSpec, nil
 		}
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 func init() {
@@ -357,7 +375,7 @@ func ExtractSpecFromJS(bodyBytes []byte) []byte {
 	return bodyBytes
 }
 
-func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
+func UnmarshalSpec(bodyBytes []byte) (*openapi3.T, error) {
 	var doc openapi2.T
 	var doc3 openapi3.T
 
@@ -373,19 +391,19 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 	_ = json.Unmarshal(bodyBytes, &doc3)
 
 	if strings.HasPrefix(doc3.OpenAPI, "3") {
-		newDoc := &doc3
-		return newDoc
+		return &doc3, nil
 	} else if strings.HasPrefix(doc.Swagger, "2") {
 		newDoc, err := openapi2conv.ToV3(&doc)
 		if err != nil {
 			printErr("Error converting v2 document to v3: %s", err)
 		}
-		return newDoc
+		return newDoc, nil
 	} else if Mode == "brute" {
 		var noDoc openapi3.T
-		return &noDoc
+		return &noDoc, nil
 	} else {
-		die("Error parsing definition file.")
-		return nil
+		// Return a non-nil doc alongside the error so callers that ignore the
+		// error don't dereference nil.
+		return &openapi3.T{}, fmt.Errorf("error parsing definition file")
 	}
 }

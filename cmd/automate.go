@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,10 +23,10 @@ var automateCmd = &cobra.Command{
 	Long: `The automate command sends a request to each discovered endpoint and returns the status code of the result.
 This enables the user to get a quick look at which endpoints require authentication and which ones do not. If a request
 responds in an abnormal way, manual testing should be conducted (prepare manual tests using the "prepare" command).`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if outfile != "" && strings.ToLower(outputFormat) != "" {
 			if !strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) != "json" {
-				die("Only the JSON output format is supported at the moment.")
+				return fmt.Errorf("only the JSON output format is supported at the moment")
 			} else if strings.HasSuffix(strings.ToLower(outfile), "json") && strings.ToLower(outputFormat) == "console" {
 				outputFormat = "json"
 			}
@@ -45,12 +46,15 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 
 		_, err := time.Parse("2006-01-02", customDate)
 		if err != nil {
-			die("An invalid date was supplied. Please supply a date in '2006-01-02' format.")
+			return fmt.Errorf("an invalid date was supplied. Please supply a date in '2006-01-02' format")
 		}
 
 		var bodyBytes []byte
 
-		client, replayClient := CheckAndConfigureProxy()
+		client, replayClient, err := CheckAndConfigureProxy()
+		if err != nil {
+			return err
+		}
 
 		if strings.ToLower(outputFormat) != "json" {
 			printInfo("\n")
@@ -58,11 +62,14 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 		}
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			bodyBytes, _, _, err = MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			if err != nil {
+				return err
+			}
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
-				die("Error opening file: %v", err)
+				return fmt.Errorf("error opening file: %v", err)
 			}
 			// Set the base directory for resolving external refs
 			specBaseDir = filepath.Dir(localFile)
@@ -79,7 +86,7 @@ responds in an abnormal way, manual testing should be conducted (prepare manual 
 			log.Info("Sending requests at a rate of ", rateLimit, " requests per second.")
 		}
 		*/
-		GenerateRequests(bodyBytes, client, replayClient)
+		return GenerateRequests(bodyBytes, client, replayClient)
 	},
 }
 

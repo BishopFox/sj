@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 )
 
@@ -58,16 +61,27 @@ $ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		Mode = cmd.Name()
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			printErr("Command not specified. See the --help flag for usage.")
+			return fmt.Errorf("command not specified. See the --help flag for usage")
 		}
+		return nil
 	},
 	Version: "2.8.2",
+	// Errors and usage are surfaced once by Execute() with our own styling, so
+	// cobra should not also print them on a RunE failure.
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
+// Execute runs the root command. It is the single place in the package that
+// terminates the process: command and library code return errors up to here
+// instead of calling os.Exit, which keeps that logic testable and reusable.
 func Execute() {
-	cobra.CheckErr(rootCmd.Execute())
+	if err := rootCmd.Execute(); err != nil {
+		printErr("%v", err)
+		os.Exit(1)
+	}
 }
 
 func init() {

@@ -19,7 +19,7 @@ var convertCmd = &cobra.Command{
 	Use:   "convert",
 	Short: "Converts a Swagger definition file to an OpenAPI v3 definition file.",
 	Long:  `The convert command converts a provided definition file from the Swagger specification (v2) to the OpenAPI specification (v3) and stores it into an output file.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 
 		var bodyBytes []byte
 
@@ -29,7 +29,10 @@ var convertCmd = &cobra.Command{
 			}
 		}
 
-		client, _ := CheckAndConfigureProxy()
+		client, _, err := CheckAndConfigureProxy()
+		if err != nil {
+			return err
+		}
 
 		if strings.ToLower(outputFormat) != "json" {
 			printInfo("\n")
@@ -37,11 +40,14 @@ var convertCmd = &cobra.Command{
 		}
 
 		if swaggerURL != "" {
-			bodyBytes, _, _ = MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			bodyBytes, _, _, err = MakeRequest(client, "GET", swaggerURL, timeout, nil)
+			if err != nil {
+				return err
+			}
 		} else {
 			specFile, err := os.Open(localFile)
 			if err != nil {
-				die("Error opening definition file: %v", err)
+				return fmt.Errorf("error opening definition file: %v", err)
 			}
 
 			bodyBytes, _ = io.ReadAll(specFile)
@@ -75,7 +81,7 @@ var convertCmd = &cobra.Command{
 				}
 				converted, err := json.Marshal(newDoc)
 				if err != nil {
-					die("Error converting definition file to v3: %v", err)
+					return fmt.Errorf("error converting definition file to v3: %v", err)
 				}
 				if !strings.HasSuffix(string(converted), "}") {
 					if outfile == "" {
@@ -94,7 +100,7 @@ var convertCmd = &cobra.Command{
 			case "yaml", "yml":
 				converted, err := yaml.Marshal(newDoc)
 				if err != nil {
-					die("Error converting definition file to v3: %v", err)
+					return fmt.Errorf("error converting definition file to v3: %v", err)
 				}
 				if outfile == "" {
 					fmt.Println(string(converted))
@@ -104,8 +110,9 @@ var convertCmd = &cobra.Command{
 			}
 
 		} else {
-			die("Error parsing definition file.")
+			return fmt.Errorf("error parsing definition file")
 		}
+		return nil
 	},
 }
 

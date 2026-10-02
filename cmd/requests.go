@@ -157,9 +157,9 @@ func dangerousRequestDeclined(target string) bool {
 
 // MakeRequest returns the body bytes, body string, and status code. It wraps
 // MakeRequestFull for callers that do not need the Content-Type.
-func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int) {
-	bodyBytes, bodyString, status, _, _ := MakeRequestFull(client, method, target, timeout, reqData)
-	return bodyBytes, bodyString, status
+func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int, error) {
+	bodyBytes, bodyString, status, _, _, err := MakeRequestFull(client, method, target, timeout, reqData)
+	return bodyBytes, bodyString, status, err
 }
 
 // splitWords lowercases s and splits it into words on non-alphanumeric
@@ -217,7 +217,7 @@ func requestWords(u *url.URL) map[string]bool {
 
 // MakeRequestFull also returns the response Content-Type and the User-Agent sent.
 // Taking body and Content-Type from one response avoids a second request per URL.
-func MakeRequestFull(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int, string, string) {
+func MakeRequestFull(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int, string, string, error) {
 	if quiet {
 		avoidDangerousRequests = "y"
 	}
@@ -226,10 +226,10 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 	u, err := url.Parse(target)
 	if err != nil || u == nil {
 		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
-		return nil, "", 0, "", ""
+		return nil, "", 0, "", "", nil
 	}
 	if Mode == "automate" && target != approvedTarget && dangerousRequestDeclined(target) {
-		return nil, "", 0, "", ""
+		return nil, "", 0, "", "", nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
@@ -247,9 +247,9 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 	req, err := http.NewRequest(method, target, body)
 	if err != nil {
 		if err != context.Canceled && err != io.EOF {
-			die("Error: could not create HTTP request - %v", err)
+			return nil, "", 0, "", "", fmt.Errorf("could not create HTTP request - %v", err)
 		}
-		return nil, "", 0, "", ""
+		return nil, "", 0, "", "", nil
 	}
 
 	sentUserAgent := applyHeaders(req, "")
@@ -257,18 +257,18 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 	resp, err := client.Do(req.WithContext(ctx))
 	if err == context.DeadlineExceeded {
 		printWarn("Error: %s - skipping request.", err)
-		return nil, "", 0, "", ""
+		return nil, "", 0, "", "", nil
 	} else if err != nil && err != context.Canceled && err != io.EOF {
 		if (strings.Contains(fmt.Sprint(err), "tls") || strings.Contains(fmt.Sprint(err), "x509")) && !strings.Contains(fmt.Sprint(err), "user canceled") {
-			die("Try supplying the --insecure flag.")
+			return nil, "", 0, "", "", fmt.Errorf("Try supplying the --insecure flag.")
 		} else if strings.Contains(fmt.Sprint(err), "tcp") && strings.Contains(fmt.Sprint(err), "no such host") {
-			die("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
+			return nil, "", 0, "", "", fmt.Errorf("The target '%s' is not reachable. Check the declared host(s) and supply a target manually using -T if needed.", u.Scheme+"://"+u.Host)
 		} else if strings.Contains(fmt.Sprint(err), "user canceled") {
-			return nil, "skipped", 1, "", ""
+			return nil, "skipped", 1, "", "", nil
 		} else {
 			printErr("Error: response not received.\n%v", err)
 		}
-		return nil, "", 0, "", ""
+		return nil, "", 0, "", "", nil
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
@@ -281,23 +281,24 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 		if locErr != nil || redirect == nil {
 			requestStatus = resp.StatusCode
 			depth = 0
-			return bodyBytes, bodyString, requestStatus, contentTypeHeader, sentUserAgent
+			return bodyBytes, bodyString, requestStatus, contentTypeHeader, sentUserAgent, nil
 		}
 		depth += 1
 		var ct, ua string
+		var rerr error
 		// redirect.String() keeps the query string, and the buffered body is
 		// replayed through a fresh reader.
-		bodyBytes, bodyString, requestStatus, ct, ua = MakeRequestFull(client, method, redirect.String(), timeout, bytes.NewReader(reqBody))
-		return bodyBytes, bodyString, requestStatus, ct, ua
+		bodyBytes, bodyString, requestStatus, ct, ua, rerr = MakeRequestFull(client, method, redirect.String(), timeout, bytes.NewReader(reqBody))
+		return bodyBytes, bodyString, requestStatus, ct, ua, rerr
 	}
 
 	requestStatus = resp.StatusCode
 	depth = 0
 
-	return bodyBytes, bodyString, requestStatus, contentTypeHeader, sentUserAgent
+	return bodyBytes, bodyString, requestStatus, contentTypeHeader, sentUserAgent, nil
 }
 
-func CheckAndConfigureProxy() (client http.Client, replayClient *http.Client) {
+func CheckAndConfigureProxy() (client http.Client, replayClient *http.Client, err error) {
 	var proxyUrl *url.URL
 
 	transport := &http.Transport{}
@@ -323,9 +324,9 @@ func CheckAndConfigureProxy() (client http.Client, replayClient *http.Client) {
 		if insecure {
 			replayTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
-		replayProxyUrl, err := url.Parse(replayProxy)
-		if err != nil {
-			die("Error parsing replay proxy URL: %v", err)
+		replayProxyUrl, parseErr := url.Parse(replayProxy)
+		if parseErr != nil {
+			return client, replayClient, fmt.Errorf("error parsing replay proxy URL: %v", parseErr)
 		}
 		replayTransport.Proxy = http.ProxyURL(replayProxyUrl)
 		replayClient = &http.Client{
@@ -336,7 +337,7 @@ func CheckAndConfigureProxy() (client http.Client, replayClient *http.Client) {
 		}
 	}
 
-	return client, replayClient
+	return client, replayClient, nil
 }
 
 // userAgent is the one the replayed request carried, so the copy reproduces it.

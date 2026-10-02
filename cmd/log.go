@@ -80,11 +80,6 @@ func printErr(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "%s %s\n", red("[✗]"), msg)
 }
 
-func die(format string, args ...interface{}) {
-	printErr(format, args...)
-	os.Exit(1)
-}
-
 // writeLog is the main dispatch function for endpoint results.
 func writeLog(sc int, target, method, errorMsg, response, security string, missingAuth bool) {
 	var out io.Writer = os.Stdout
@@ -97,14 +92,16 @@ func writeLog(sc int, target, method, errorMsg, response, security string, missi
 	if outfile != "" {
 		file, err := os.OpenFile(outfile, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Output file does not exist or cannot be created")
-			os.Exit(1)
+			// Package code must not exit the process; fall back to stdout so the
+			// results are still emitted.
+			printErr("Output file '%s' cannot be opened; writing to stdout instead.", outfile)
+		} else {
+			defer file.Close()
+			out = file
+			// Disable color when writing to a file.
+			color.NoColor = true
+			defer func() { color.NoColor = false }()
 		}
-		defer file.Close()
-		out = file
-		// Disable color when writing to a file.
-		color.NoColor = true
-		defer func() { color.NoColor = false }()
 	}
 
 	preview := ""

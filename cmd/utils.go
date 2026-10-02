@@ -40,10 +40,10 @@ type SchemaNode struct {
 	AdditionalProperties *SchemaNode
 }
 
-func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, replayClient *http.Client) {
+func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, replayClient *http.Client) error {
 	paths, ok := spec["paths"].(map[string]interface{})
 	if !ok || paths == nil {
-		die("Could not find any defined operations. Review the file manually.")
+		return fmt.Errorf("could not find any defined operations. Review the file manually")
 	}
 
 	pathKeys := make([]string, 0, len(paths))
@@ -364,7 +364,10 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 								// the wire cannot disagree.
 								sentBody := []byte(v.body)
 
-								_, resp, sc, _, sentUA := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody))
+								_, resp, sc, _, sentUA, reqErr := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody))
+								if reqErr != nil {
+									return reqErr
+								}
 
 								tempResponsePreviewLength := responsePreviewLength
 								if len(resp) <= responsePreviewLength {
@@ -456,19 +459,20 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 			if verbose {
 				err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &verboseResult)
 				if err != nil {
-					die("Error marshalling JSON: %v", err)
+					return fmt.Errorf("error unmarshalling JSON: %v", err)
 				}
 				jsonVerboseResultArray = append(jsonVerboseResultArray, verboseResult)
 			} else {
 				err := json.Unmarshal([]byte(strings.TrimPrefix(jsonResultsStringArray[r], ",")), &result)
 				if err != nil {
-					die("Error marshalling JSON: %v", err)
+					return fmt.Errorf("error unmarshalling JSON: %v", err)
 				}
 				jsonResultArray = append(jsonResultArray, result)
 			}
 		}
 		writeLog(8899, "", "", "", "", "", false)
 	}
+	return nil
 }
 
 func EnforceSingleContentType(newContentType string) {
@@ -679,7 +683,7 @@ func GenerateExample(node *SchemaNode) interface{} {
 	}
 }
 
-func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.Client) {
+func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.Client) error {
 	// Swagger UI bundles serve the spec wrapped in JavaScript (e.g.
 	// swagger-ui-init.js). Detect that and unwrap before parsing so the
 	// downstream YAML/JSON unmarshal succeeds.
@@ -690,7 +694,10 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 	}
 
 	// Ingests the specification file
-	spec := SafelyUnmarshalSpec(bodyBytes)
+	spec, err := SafelyUnmarshalSpec(bodyBytes)
+	if err != nil {
+		return err
+	}
 
 	// Checks defined security schemes and prompts for authentication
 	CheckSecuritySchemes(spec)
@@ -741,44 +748,42 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 	} else if v, ok := spec["openapi"].(string); ok && strings.HasPrefix(v, "3") {
 		// OpenAPI (v3)
 		if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
-			if len(servers) > 1 {
-				if !quiet && (Mode != "endpoints") && apiTarget == "" {
-					printWarn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
-					for i := range servers {
-						if srv, ok := servers[i].(map[string]interface{}); ok {
-							if serverURL, ok := srv["url"].(string); ok {
-								printInfo("%s\n", serverURL)
-							}
+			// When several servers are declared and the user hasn't pinned one
+			// with -T, warn and fall through to the first declared server rather
+			// than aborting the run.
+			if len(servers) > 1 && !quiet && Mode != "endpoints" && apiTarget == "" {
+				printWarn("Multiple servers detected in documentation. Defaulting to the first; set a specific server with the -T flag.\nThe detected servers are as follows:")
+				for i := range servers {
+					if srv, ok := servers[i].(map[string]interface{}); ok {
+						if serverURL, ok := srv["url"].(string); ok {
+							printInfo("%s\n", serverURL)
 						}
 					}
 				}
-			} else {
-				if srv, ok := servers[0].(map[string]interface{}); ok {
-					if serverURL, ok := srv["url"].(string); ok {
-						if strings.Contains(serverURL, "://") {
-							// Full URL in server
-							if parsedServerURL, err := url.Parse(serverURL); err == nil {
-								basePath = normalizeBasePath(parsedServerURL.Path)
-								if apiTarget == "" {
-									apiTarget = parsedServerURL.Scheme + "://" + parsedServerURL.Host
-								}
-							}
-						} else if serverURL == "/" {
-							basePath = ""
-						} else {
-							// Relative URL - this becomes the basePath
-							basePath = normalizeBasePath(serverURL)
-							// Only try to construct apiTarget if -T wasn't used
+			}
+			if srv, ok := servers[0].(map[string]interface{}); ok {
+				if serverURL, ok := srv["url"].(string); ok {
+					if strings.Contains(serverURL, "://") {
+						// Full URL in server
+						if parsedServerURL, err := url.Parse(serverURL); err == nil {
+							basePath = normalizeBasePath(parsedServerURL.Path)
 							if apiTarget == "" {
-								if u.Scheme != "" && u.Host != "" {
-									apiTarget = u.Scheme + "://" + u.Host
-								} else {
-									// Local file with relative server URL and no -T flag
-									// Only fail for commands that need full URLs
-									if Mode != "endpoints" {
-										die("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
-									}
-								}
+								apiTarget = parsedServerURL.Scheme + "://" + parsedServerURL.Host
+							}
+						}
+					} else if serverURL == "/" {
+						basePath = ""
+					} else {
+						// Relative URL - this becomes the basePath
+						basePath = normalizeBasePath(serverURL)
+						// Only try to construct apiTarget if -T wasn't used
+						if apiTarget == "" {
+							if u.Scheme != "" && u.Host != "" {
+								apiTarget = u.Scheme + "://" + u.Host
+							} else if Mode != "endpoints" {
+								// Local file with relative server URL and no -T flag:
+								// there is no host to resolve, so this can't proceed.
+								return fmt.Errorf("spec has relative server URL '%s' but no base URL available. Use -T to specify target server", serverURL)
 							}
 						}
 					}
@@ -791,12 +796,10 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 	if apiTarget == "" {
 		if u.Scheme != "" && u.Host != "" {
 			apiTarget = u.Scheme + "://" + u.Host
-		} else {
-			// No server info and no URL to parse - require user to specify target
-			// Only fail for commands that need full URLs
-			if Mode != "endpoints" {
-				die("No server information found in spec and no URL provided. Use -T to specify target server.")
-			}
+		} else if Mode != "endpoints" {
+			// No server info and no URL to parse - require user to specify target.
+			// Only fail for commands that need full URLs.
+			return fmt.Errorf("no server information found in spec and no URL provided. Use -T to specify target server")
 		}
 	}
 
@@ -806,7 +809,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 	}
 
 	// Reviews all defined API routes and builds requests as defined
-	BuildRequestsFromPaths(spec, client, replayClient)
+	return BuildRequestsFromPaths(spec, client, replayClient)
 }
 
 func ResolveRef(spec map[string]interface{}, ref string) map[string]interface{} {
@@ -975,8 +978,8 @@ func ResolveExternalRef(ref string, baseDir string) map[string]interface{} {
 		return nil
 	}
 
-	externalSpec := SafelyUnmarshalSpec(fileData)
-	if externalSpec == nil {
+	externalSpec, err := SafelyUnmarshalSpec(fileData)
+	if err != nil || externalSpec == nil {
 		return nil
 	}
 
@@ -1052,14 +1055,14 @@ func looksLikeJSSpec(b []byte) bool {
 	return false
 }
 
-func SafelyUnmarshalSpec(data []byte) map[string]interface{} {
+func SafelyUnmarshalSpec(data []byte) (map[string]interface{}, error) {
 
 	var doc map[string]interface{}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		die("Failed to unmarshal API documentation: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal API documentation: %v", err)
 	}
 
-	return doc
+	return doc, nil
 }
 
 /*
