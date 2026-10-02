@@ -67,3 +67,8 @@ changelog:
 
 release:
     draft: true
+    header: |
+      ### Did you know?
+
+      sj is now integrated into [Joro](https://github.com/BishopFox/joro)!
+      You can run Swagger/OpenAPI exposure testing as part of a Joro workflow without invoking sj by hand.
