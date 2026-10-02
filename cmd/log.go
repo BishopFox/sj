@@ -17,6 +17,13 @@ type Result struct {
 	// omitted unless an operation was tested under more than one, so
 	// single-variant output is unchanged.
 	ContentType string `json:"contentType,omitempty"`
+	// Security is the effective security requirement the spec declares for this
+	// operation (e.g. "bearerAuth", "public"). Omitted when undeclared.
+	Security string `json:"security,omitempty"`
+	// MissingAuth is set when the spec marks this operation as requiring auth but
+	// it returned a 2xx with no matching credential supplied — a possible broken
+	// access control finding.
+	MissingAuth bool `json:"missingAuth,omitempty"`
 }
 
 type VerboseResult struct {
@@ -26,6 +33,8 @@ type VerboseResult struct {
 	Target      string `json:"target"`
 	Curl        string `json:"curl"`
 	ContentType string `json:"contentType,omitempty"`
+	Security    string `json:"security,omitempty"`
+	MissingAuth bool   `json:"missingAuth,omitempty"`
 }
 
 // Diagnostic helpers — all write to stderr so stdout stays clean for piping.
@@ -77,7 +86,7 @@ func die(format string, args ...interface{}) {
 }
 
 // writeLog is the main dispatch function for endpoint results.
-func writeLog(sc int, target, method, errorMsg, response string) {
+func writeLog(sc int, target, method, errorMsg, response, security string, missingAuth bool) {
 	var out io.Writer = os.Stdout
 	tempResponsePreviewLength := responsePreviewLength
 
@@ -116,14 +125,14 @@ func writeLog(sc int, target, method, errorMsg, response string) {
 			logJSON(title, description, out)
 		}
 	default:
-		logResult(sc, target, method, errorMsg, preview, out)
+		logResult(sc, target, method, errorMsg, preview, security, missingAuth, out)
 	}
 
 	responsePreviewLength = tempResponsePreviewLength
 }
 
 // logResult renders a single endpoint result line.
-func logResult(sc int, target, method, errorMsg, preview string, out io.Writer) {
+func logResult(sc int, target, method, errorMsg, preview, security string, missingAuth bool, out io.Writer) {
 	var sym string
 	var painter func(a ...interface{}) string
 
@@ -156,6 +165,17 @@ func logResult(sc int, target, method, errorMsg, preview string, out io.Writer) 
 	annotation := ""
 	if errorMsg != "" {
 		annotation = "  " + faint(errorMsg)
+	}
+
+	// The security requirement the spec declares for this operation, so the row
+	// shows what the operator should expect even before interpreting the status.
+	if security != "" {
+		annotation += "  " + faint("[auth: "+security+"]")
+	}
+	// A required operation that answered 2xx without a credential is surfaced as a
+	// possible broken access control finding, not just logged as another 200.
+	if missingAuth {
+		annotation += "  " + red(fmt.Sprintf("[!] AUTH REQUIRED but %s with no credential -> possible broken access control", statusStr))
 	}
 
 	line := fmt.Sprintf("%s  %-7s  %-3s  %s%s\n",

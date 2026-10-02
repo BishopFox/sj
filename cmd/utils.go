@@ -102,6 +102,16 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 							}
 						}
 
+						// The effective security the spec declares for this operation,
+						// and whether an auth-required operation is being tested without a
+						// matching credential (so a 2xx becomes a missing-auth finding).
+						// userHeaders is the pre-mutation snapshot, so it carries any
+						// auth-supplied header credential but not this op's header params.
+						opSec := resolveOperationSecurity(spec, opMap)
+						secLabel := opSec.label()
+						authRequiredNoCred := opSec.state == secRequired &&
+							!requirementSatisfiedByCredentials(opSec, spec, userHeaders)
+
 						targetURL := fmt.Sprintf("%s%s%s", apiTarget, basePath, pathName)
 						// Apply any query-string API keys from a security scheme
 						// before spec params and before curl is composed, so the
@@ -379,12 +389,15 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 								if reportContentType {
 									reportedCT = v.declared
 								}
+								// A spec-declared-auth operation answering 2xx with no
+								// credential supplied is a possible broken access control.
+								missingAuth := authRequiredNoCred && sc >= 200 && sc <= 299
 								var result []byte
 
 								if verbose {
-									result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: logURL.Path, Curl: curl, ContentType: reportedCT})
+									result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: logURL.Path, Curl: curl, ContentType: reportedCT, Security: secLabel, MissingAuth: missingAuth})
 								} else {
-									result, _ = json.Marshal(Result{Method: method, Status: sc, Target: logURL.Path, ContentType: reportedCT})
+									result, _ = json.Marshal(Result{Method: method, Status: sc, Target: logURL.Path, ContentType: reportedCT, Security: secLabel, MissingAuth: missingAuth})
 								}
 
 								if getAccessibleEndpoints {
@@ -396,7 +409,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 											jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
 										}
 										if outputFormat == "console" {
-											writeLog(sc, logURL.Path, strings.ToUpper(method), description, resp[:tempResponsePreviewLength])
+											writeLog(sc, logURL.Path, strings.ToUpper(method), description, resp[:tempResponsePreviewLength], secLabel, missingAuth)
 										}
 										if replayClient != nil {
 											ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
@@ -409,7 +422,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
 									}
 									if outputFormat == "console" {
-										writeLog(sc, logURL.Path, strings.ToUpper(method), description, resp[:tempResponsePreviewLength])
+										writeLog(sc, logURL.Path, strings.ToUpper(method), description, resp[:tempResponsePreviewLength], secLabel, missingAuth)
 									}
 									if replayClient != nil {
 										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
@@ -454,7 +467,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 				jsonResultArray = append(jsonResultArray, result)
 			}
 		}
-		writeLog(8899, "", "", "", "")
+		writeLog(8899, "", "", "", "", "", false)
 	}
 }
 
@@ -681,6 +694,11 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 
 	// Checks defined security schemes and prompts for authentication
 	CheckSecuritySchemes(spec)
+
+	// Reports the effective security requirement of every declared operation so
+	// the operator can see which are meant to be authenticated, which are public,
+	// and which reference an undefined scheme.
+	SummarizeOperationSecurity(spec)
 
 	u, parseErr := url.Parse(swaggerURL)
 	if parseErr != nil {

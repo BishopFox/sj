@@ -33,7 +33,7 @@ func captureJSONOutput(t *testing.T, isQuiet, isVerbose bool) map[string]interfa
 	jsonResultArray = []Result{{Method: "GET", Status: 200, Target: "/pet/1"}}
 	jsonVerboseResultArray = []VerboseResult{{Method: "GET", Status: 200, Target: "/pet/1"}}
 
-	writeLog(8899, "", "", "", "")
+	writeLog(8899, "", "", "", "", "", false)
 
 	data, err := os.ReadFile(stdout.Name())
 	if err != nil {

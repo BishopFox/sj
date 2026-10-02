@@ -3,6 +3,8 @@ package cmd
 import (
 	"encoding/base64"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -204,4 +206,291 @@ func CheckSecuritySchemes(spec map[string]interface{}) {
 			printInfo("  - bearerFormat: %s\n", bearerFormat)
 		}
 	}
+}
+
+// securityState classifies an operation's effective security requirement.
+type securityState int
+
+const (
+	// secUndeclared: neither the operation nor the spec declares any requirement.
+	secUndeclared securityState = iota
+	// secRequired: a requirement applies and anonymous access is not offered.
+	secRequired
+	// secOptional: a requirement applies, but an empty {} entry alongside it
+	// means anonymous access is also accepted.
+	secOptional
+	// secPublic: an operation-level `security: []` explicitly disables auth,
+	// overriding any spec-level default.
+	secPublic
+)
+
+// httpMethods is the set of path-item keys that denote an operation, so the
+// security summary skips siblings like "parameters", "summary", or "$ref".
+var httpMethods = map[string]bool{
+	"get": true, "put": true, "post": true, "delete": true,
+	"options": true, "head": true, "patch": true, "trace": true,
+}
+
+// opSecurity is the effective security requirement resolved for one operation:
+// its classification, the scheme names any requirement references (deduped), any
+// referenced names with no matching definition, and the raw alternatives so a
+// credential check can honor AND within a requirement object and OR across them.
+type opSecurity struct {
+	state        securityState
+	schemes      []string
+	undefined    []string
+	alternatives [][]string
+}
+
+// resolveOperationSecurity computes the effective security for one operation.
+// The operation's own `security` wins when the key is present (an empty list is
+// an explicit public override); otherwise the spec-level `security` is inherited.
+// Each requirement object (scheme -> scopes) ANDs its schemes; alternative
+// objects OR; an empty {} object marks anonymous access as acceptable.
+func resolveOperationSecurity(spec, opMap map[string]interface{}) opSecurity {
+	raw, fromOp := opMap["security"]
+	if !fromOp {
+		var present bool
+		raw, present = spec["security"]
+		if !present {
+			return opSecurity{state: secUndeclared}
+		}
+	}
+
+	list, ok := raw.([]interface{})
+	if !ok {
+		// A malformed security value is treated as undeclared rather than guessed at.
+		return opSecurity{state: secUndeclared}
+	}
+
+	if len(list) == 0 {
+		// Empty at the operation level opts out of auth; inherited-empty just
+		// means no spec-level default applies.
+		if fromOp {
+			return opSecurity{state: secPublic}
+		}
+		return opSecurity{state: secUndeclared}
+	}
+
+	defined := securitySchemeSource(spec)
+
+	s := opSecurity{}
+	seen := map[string]bool{}
+	hasAnonymous := false
+	for _, item := range list {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if len(obj) == 0 {
+			hasAnonymous = true
+			continue
+		}
+		// Map order is not stable, so sort the ANDed scheme names for
+		// deterministic labels and summary output.
+		var alt []string
+		for _, name := range slices.Sorted(maps.Keys(obj)) {
+			alt = append(alt, name)
+			if !seen[name] {
+				seen[name] = true
+				s.schemes = append(s.schemes, name)
+				if defined[name] == nil {
+					s.undefined = append(s.undefined, name)
+				}
+			}
+		}
+		if len(alt) > 0 {
+			s.alternatives = append(s.alternatives, alt)
+		}
+	}
+
+	switch {
+	case len(s.alternatives) > 0 && hasAnonymous:
+		s.state = secOptional
+	case len(s.alternatives) > 0:
+		s.state = secRequired
+	case hasAnonymous:
+		// Only empty {} objects: anonymous access with no scheme required.
+		s.state = secPublic
+	default:
+		s.state = secUndeclared
+	}
+	return s
+}
+
+// label renders the effective requirement as a compact string: scheme names are
+// joined with "+" within an AND requirement and " | " across OR alternatives.
+// Public operations read "public"; undeclared ones yield an empty string so the
+// caller can omit the field entirely.
+func (s opSecurity) label() string {
+	switch s.state {
+	case secPublic:
+		return "public"
+	case secUndeclared:
+		return ""
+	}
+
+	alts := make([]string, 0, len(s.alternatives))
+	for _, alt := range s.alternatives {
+		alts = append(alts, strings.Join(alt, "+"))
+	}
+	joined := strings.Join(alts, " | ")
+	if s.state == secOptional {
+		return "optional: " + joined
+	}
+	return joined
+}
+
+// SummarizeOperationSecurity prints, to stderr, the effective security
+// requirement of every declared operation. It is computed from the spec alone
+// (no requests), so it runs for automate, endpoints, and prepare alike, and it
+// stays off stdout to keep that stream pipeable.
+func SummarizeOperationSecurity(spec map[string]interface{}) {
+	paths, ok := spec["paths"].(map[string]interface{})
+	if !ok || len(paths) == 0 {
+		return
+	}
+
+	type row struct {
+		method string
+		path   string
+		sec    opSecurity
+	}
+	var rows []row
+	for _, pathName := range slices.Sorted(maps.Keys(paths)) {
+		pathItem, ok := paths[pathName].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for _, method := range slices.Sorted(maps.Keys(pathItem)) {
+			if !httpMethods[strings.ToLower(method)] {
+				continue
+			}
+			opMap, ok := pathItem[method].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			rows = append(rows, row{strings.ToUpper(method), pathName, resolveOperationSecurity(spec, opMap)})
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+
+	printInfo("Operation security requirements:\n")
+	for _, r := range rows {
+		switch r.sec.state {
+		case secRequired:
+			printInfo("  %s %-6s %s  requires: %s\n", red("✗"), r.method, r.path, r.sec.label())
+		case secOptional:
+			printInfo("  %s %-6s %s  %s\n", yellow("⚠"), r.method, r.path, r.sec.label())
+		case secPublic:
+			printInfo("  %s %-6s %s  PUBLIC (security: [])\n", yellow("⚠"), r.method, r.path)
+		default:
+			printInfo("  %s %-6s %s  none declared\n", faint("-"), r.method, r.path)
+		}
+		if len(r.sec.undefined) > 0 {
+			printWarn("%s %s references undefined scheme(s): %s", r.method, r.path, strings.Join(r.sec.undefined, ", "))
+		}
+	}
+	printInfo("\n")
+}
+
+// requirementSatisfiedByCredentials reports whether a supplied credential
+// already satisfies at least one of the operation's requirement alternatives, so
+// the missing-auth flag can be suppressed on authenticated runs. It checks the
+// base credential state (headers snapshotted before per-operation mutation, plus
+// the query/cookie auth globals) against each scheme's definition.
+func requirementSatisfiedByCredentials(s opSecurity, spec map[string]interface{}, userHeaders []string) bool {
+	if len(s.alternatives) == 0 {
+		return false
+	}
+	defined := securitySchemeSource(spec)
+	for _, alt := range s.alternatives {
+		satisfied := true
+		for _, name := range alt {
+			if !credentialSuppliedForScheme(defined, name, userHeaders) {
+				satisfied = false
+				break
+			}
+		}
+		if satisfied {
+			return true
+		}
+	}
+	return false
+}
+
+// credentialSuppliedForScheme reports whether a credential matching one named
+// scheme was supplied, by consulting the scheme's definition for where it lives
+// (header/bearer/basic in Headers, apiKey in query/cookie/header).
+func credentialSuppliedForScheme(defined map[string]interface{}, name string, userHeaders []string) bool {
+	scheme, _ := defined[name].(map[string]interface{})
+	if scheme == nil {
+		return false
+	}
+	switch typ, _ := scheme["type"].(string); typ {
+	case "http":
+		switch s, _ := scheme["scheme"].(string); strings.ToLower(s) {
+		case "bearer":
+			return headerValuePrefixPresent(userHeaders, "authorization", "bearer ")
+		case "basic":
+			return headerValuePrefixPresent(userHeaders, "authorization", "basic ")
+		default:
+			// An unrecognized http scheme: any Authorization header counts.
+			return headerPresent(userHeaders, "authorization")
+		}
+	case "apiKey":
+		keyName, _ := scheme["name"].(string)
+		if keyName == "" {
+			return false
+		}
+		switch inVal, _ := scheme["in"].(string); inVal {
+		case "header":
+			return headerPresent(userHeaders, keyName)
+		case "query":
+			return slices.ContainsFunc(authQueryParams, func(p queryAuthParam) bool {
+				return strings.EqualFold(p.name, keyName)
+			})
+		case "cookie":
+			return slices.ContainsFunc(authCookieParams, func(p queryAuthParam) bool {
+				return strings.EqualFold(p.name, keyName)
+			})
+		}
+	}
+	return false
+}
+
+// splitHeader splits a "Key: Value" header entry, reporting whether a colon was
+// found. Key and value are trimmed.
+func splitHeader(h string) (key, value string, ok bool) {
+	idx := strings.Index(h, ":")
+	if idx == -1 {
+		return "", "", false
+	}
+	return strings.TrimSpace(h[:idx]), strings.TrimSpace(h[idx+1:]), true
+}
+
+// headerPresent reports whether headers carries a non-empty value for name
+// (case-insensitive key match).
+func headerPresent(headers []string, name string) bool {
+	for _, h := range headers {
+		if k, v, ok := splitHeader(h); ok && strings.EqualFold(k, name) && v != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// headerValuePrefixPresent reports whether headers carries name with a value
+// beginning valuePrefix (both compared case-insensitively).
+func headerValuePrefixPresent(headers []string, name, valuePrefix string) bool {
+	for _, h := range headers {
+		if k, v, ok := splitHeader(h); ok && strings.EqualFold(k, name) {
+			if strings.HasPrefix(strings.ToLower(v), valuePrefix) {
+				return true
+			}
+		}
+	}
+	return false
 }

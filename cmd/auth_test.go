@@ -264,3 +264,206 @@ func TestCheckSecuritySchemesApiKeyCookie(t *testing.T) {
 		t.Errorf("quiet mode must not record cookie params, got %v", authCookieParams)
 	}
 }
+
+// bearerSpec returns a spec declaring a global bearerAuth requirement and the
+// matching scheme definition, with the supplied paths spliced in.
+func bearerSpec(paths map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"openapi":  "3.0.0",
+		"security": []interface{}{map[string]interface{}{"bearerAuth": []interface{}{}}},
+		"components": map[string]interface{}{
+			"securitySchemes": map[string]interface{}{
+				"bearerAuth": map[string]interface{}{"type": "http", "scheme": "bearer"},
+				"apiKeyAuth": map[string]interface{}{"type": "apiKey", "name": "X-API-Key", "in": "header"},
+			},
+		},
+		"paths": paths,
+	}
+}
+
+func TestResolveOperationSecurity(t *testing.T) {
+	spec := bearerSpec(nil)
+
+	tests := []struct {
+		name      string
+		op        map[string]interface{}
+		wantState securityState
+		wantLabel string
+		undefined []string
+	}{
+		{
+			name:      "inherits global requirement",
+			op:        map[string]interface{}{},
+			wantState: secRequired,
+			wantLabel: "bearerAuth",
+		},
+		{
+			name:      "operation-level public override",
+			op:        map[string]interface{}{"security": []interface{}{}},
+			wantState: secPublic,
+			wantLabel: "public",
+		},
+		{
+			name: "operation-level different scheme",
+			op: map[string]interface{}{"security": []interface{}{
+				map[string]interface{}{"apiKeyAuth": []interface{}{}},
+			}},
+			wantState: secRequired,
+			wantLabel: "apiKeyAuth",
+		},
+		{
+			name: "optional when anonymous entry present",
+			op: map[string]interface{}{"security": []interface{}{
+				map[string]interface{}{},
+				map[string]interface{}{"bearerAuth": []interface{}{}},
+			}},
+			wantState: secOptional,
+			wantLabel: "optional: bearerAuth",
+		},
+		{
+			name: "references undefined scheme",
+			op: map[string]interface{}{"security": []interface{}{
+				map[string]interface{}{"oldKey": []interface{}{}},
+			}},
+			wantState: secRequired,
+			wantLabel: "oldKey",
+			undefined: []string{"oldKey"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveOperationSecurity(spec, tc.op)
+			if got.state != tc.wantState {
+				t.Errorf("state = %d, want %d", got.state, tc.wantState)
+			}
+			if got.label() != tc.wantLabel {
+				t.Errorf("label = %q, want %q", got.label(), tc.wantLabel)
+			}
+			if strings.Join(got.undefined, ",") != strings.Join(tc.undefined, ",") {
+				t.Errorf("undefined = %v, want %v", got.undefined, tc.undefined)
+			}
+		})
+	}
+}
+
+// TestResolveOperationSecurityUndeclared verifies that with no spec-level and no
+// operation-level security, the operation is undeclared and yields no label.
+func TestResolveOperationSecurityUndeclared(t *testing.T) {
+	spec := map[string]interface{}{"openapi": "3.0.0", "paths": map[string]interface{}{}}
+	got := resolveOperationSecurity(spec, map[string]interface{}{})
+	if got.state != secUndeclared {
+		t.Errorf("state = %d, want secUndeclared", got.state)
+	}
+	if got.label() != "" {
+		t.Errorf("label = %q, want empty", got.label())
+	}
+}
+
+func TestRequirementSatisfiedByCredentials(t *testing.T) {
+	spec := bearerSpec(nil)
+	bearerOp := resolveOperationSecurity(spec, map[string]interface{}{})
+
+	if requirementSatisfiedByCredentials(bearerOp, spec, nil) {
+		t.Error("bearer requirement must not be satisfied with no headers")
+	}
+	if !requirementSatisfiedByCredentials(bearerOp, spec, []string{"Authorization: Bearer abc"}) {
+		t.Error("bearer requirement should be satisfied by an Authorization: Bearer header")
+	}
+	// A basic header does not satisfy a bearer requirement.
+	if requirementSatisfiedByCredentials(bearerOp, spec, []string{"Authorization: Basic abc"}) {
+		t.Error("basic header must not satisfy a bearer requirement")
+	}
+
+	// apiKey-in-query requirement satisfied via authQueryParams.
+	querySpec := map[string]interface{}{
+		"components": map[string]interface{}{
+			"securitySchemes": map[string]interface{}{
+				"qk": map[string]interface{}{"type": "apiKey", "name": "api_key", "in": "query"},
+			},
+		},
+	}
+	queryOp := resolveOperationSecurity(querySpec, map[string]interface{}{
+		"security": []interface{}{map[string]interface{}{"qk": []interface{}{}}},
+	})
+
+	previousQueryParams := authQueryParams
+	defer func() { authQueryParams = previousQueryParams }()
+
+	authQueryParams = nil
+	if requirementSatisfiedByCredentials(queryOp, querySpec, nil) {
+		t.Error("query apiKey requirement must not be satisfied with no params")
+	}
+	authQueryParams = []queryAuthParam{{name: "api_key", value: "x"}}
+	if !requirementSatisfiedByCredentials(queryOp, querySpec, nil) {
+		t.Error("query apiKey requirement should be satisfied by a recorded query param")
+	}
+}
+
+// runSummarizeOperationSecurity captures stdout and stderr around a call to
+// SummarizeOperationSecurity, restoring the streams afterward.
+func runSummarizeOperationSecurity(t *testing.T, spec map[string]interface{}) (stdout, stderr string) {
+	t.Helper()
+
+	outFile, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errFile, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	previousStdout, previousStderr := os.Stdout, os.Stderr
+	defer func() {
+		os.Stdout, os.Stderr = previousStdout, previousStderr
+		outFile.Close()
+		errFile.Close()
+	}()
+	os.Stdout, os.Stderr = outFile, errFile
+
+	SummarizeOperationSecurity(spec)
+
+	outBytes, err := os.ReadFile(outFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	errBytes, err := os.ReadFile(errFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(outBytes), string(errBytes)
+}
+
+func TestSummarizeOperationSecurity(t *testing.T) {
+	spec := bearerSpec(map[string]interface{}{
+		"/users": map[string]interface{}{
+			"get": map[string]interface{}{},
+		},
+		"/health": map[string]interface{}{
+			"get": map[string]interface{}{"security": []interface{}{}},
+		},
+		"/legacy": map[string]interface{}{
+			"post": map[string]interface{}{"security": []interface{}{
+				map[string]interface{}{"oldKey": []interface{}{}},
+			}},
+		},
+	})
+
+	stdout, stderr := runSummarizeOperationSecurity(t, spec)
+
+	if stdout != "" {
+		t.Fatalf("summary written to stdout: %q", stdout)
+	}
+	for _, expected := range []string{
+		"Operation security requirements",
+		"requires: bearerAuth",
+		"PUBLIC",
+		"references undefined scheme",
+		"oldKey",
+	} {
+		if !strings.Contains(stderr, expected) {
+			t.Errorf("stderr does not contain %q: %q", expected, stderr)
+		}
+	}
+}
