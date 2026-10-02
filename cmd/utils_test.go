@@ -1259,19 +1259,36 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 	}()
 
 	type captured struct {
-		ctype string
-		body  string
+		ctype     string
+		ctPresent bool
+		body      string
 	}
-	got := map[string]captured{}
+	// Keyed to a slice, not a single value: an operation that fans out across
+	// content types would otherwise overwrite its own capture and the extra
+	// requests would go unnoticed.
+	got := map[string][]captured{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		got[r.Method+" "+r.URL.Path] = captured{
-			ctype: r.Header.Get("Content-Type"),
-			body:  string(body),
-		}
+		_, present := r.Header["Content-Type"]
+		key := r.Method + " " + r.URL.Path
+		got[key] = append(got[key], captured{
+			ctype:     r.Header.Get("Content-Type"),
+			ctPresent: present,
+			body:      string(body),
+		})
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
+
+	// one asserts the operation produced exactly one request and returns it.
+	one := func(key string) captured {
+		t.Helper()
+		reqs := got[key]
+		if len(reqs) != 1 {
+			t.Fatalf("%s: expected exactly 1 request, got %d", key, len(reqs))
+		}
+		return reqs[0]
+	}
 
 	os.Args = []string{"sj", "automate"}
 	apiTarget = srv.URL
@@ -1283,6 +1300,7 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 	accept = ""
 	UserAgent = "sj-test"
 	randomUserAgent = false
+	allContentTypes = false
 	force = true // skip the dangerous-keyword prompt
 	timeout = 30
 	testString = "bishopfox"
@@ -1341,14 +1359,14 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 	BuildRequestsFromPaths(spec, http.Client{}, nil)
 
 	// A v3 requestBody on a PUT: the regression this test exists for.
-	if j := got["PUT /json"]; j.body != `{"name":"bishopfox"}` {
+	if j := one("PUT /json"); j.body != `{"name":"bishopfox"}` {
 		t.Errorf("PUT body not sent: got %q, want %q", j.body, `{"name":"bishopfox"}`)
 	} else if j.ctype != "application/json" {
 		t.Errorf("PUT Content-Type: got %q, want %q", j.ctype, "application/json")
 	}
 
 	// multipart suppresses "-d" in the printed command but must still be sent.
-	m := got["PUT /multipart"]
+	m := one("PUT /multipart")
 	if !strings.Contains(m.ctype, "multipart/form-data; boundary=") {
 		t.Errorf("PUT multipart Content-Type: got %q", m.ctype)
 	}
@@ -1357,7 +1375,7 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 	}
 
 	// A Swagger v2 "in: body" param is JSON, and PUT is treated exactly as POST.
-	post, put := got["POST /v2body"], got["PUT /v2body"]
+	post, put := one("POST /v2body"), one("PUT /v2body")
 	if post.body != put.body || post.ctype != put.ctype {
 		t.Errorf("v2 in:body differs by method: POST %q/%q, PUT %q/%q", post.ctype, post.body, put.ctype, put.body)
 	}
@@ -1369,16 +1387,326 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 	}
 
 	// A non-object body schema is a JSON array, not a "body=[map[...]]" form field.
-	if a := got["POST /v2array"]; !strings.HasPrefix(a.body, `[{`) {
+	if a := one("POST /v2array"); !strings.HasPrefix(a.body, `[{`) {
 		t.Errorf("v2 in:body array not serialized as a JSON array: got %q", a.body)
 	}
 
 	// The widened Content-Type default must not touch a bodiless request.
-	n := got["GET /nobody"]
+	n := one("GET /nobody")
 	if n.body != "" {
 		t.Errorf("bodiless GET sent a body: got %q", n.body)
 	}
-	if n.ctype != "" {
+	// Absent, not merely empty: enforcing a blank Content-Type would append a
+	// bare "Content-Type:" header that survives to the wire.
+	if n.ctPresent {
 		t.Errorf("bodiless GET declared a Content-Type: got %q", n.ctype)
+	}
+}
+
+// captureStdout runs fn with os.Stdout redirected and returns what it printed.
+// The "prepare" and "endpoints" modes write their whole result to stdout, so
+// there is no other way to assert on them.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+
+	fn()
+
+	w.Close()
+	os.Stdout = old
+	return <-done
+}
+
+// multiContentTypeSpec is one operation declaring every encodable body type
+// plus one sj has no encoder for.
+func multiContentTypeSpec() map[string]interface{} {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"name": map[string]interface{}{"type": "string"},
+		},
+	}
+	content := map[string]interface{}{}
+	for _, ct := range []string{
+		"application/json",
+		"application/xml",
+		"application/x-www-form-urlencoded",
+		"multipart/form-data",
+		"application/octet-stream",
+	} {
+		content[ct] = map[string]interface{}{"schema": schema}
+	}
+	return map[string]interface{}{
+		"paths": map[string]interface{}{
+			"/multi": map[string]interface{}{
+				"post": map[string]interface{}{
+					"requestBody": map[string]interface{}{"content": content},
+				},
+			},
+		},
+	}
+}
+
+// withPrepareMode sets up the globals BuildRequestsFromPaths reads and restores
+// them afterwards.
+func withPrepareMode(t *testing.T, mode string, fn func()) {
+	t.Helper()
+	oldArgs, oldTarget, oldBase := os.Args, apiTarget, basePath
+	oldHeaders, oldCT, oldAll := Headers, contentType, allContentTypes
+	oldPrepareFor, oldTestString, oldWarned := prepareFor, testString, forcedContentTypeWarned
+	defer func() {
+		os.Args, apiTarget, basePath = oldArgs, oldTarget, oldBase
+		Headers, contentType, allContentTypes = oldHeaders, oldCT, oldAll
+		prepareFor, testString, forcedContentTypeWarned = oldPrepareFor, oldTestString, oldWarned
+	}()
+
+	os.Args = []string{"sj", mode}
+	apiTarget = "http://127.0.0.1:9999"
+	basePath = ""
+	Headers = nil
+	contentType = ""
+	allContentTypes = false
+	prepareFor = "curl"
+	testString = "bishopfox"
+	forcedContentTypeWarned = map[string]bool{}
+
+	fn()
+}
+
+// TestPrepareEmitsOneContentTypePerCommand is the regression test for the
+// printed command accumulating a Content-Type header per declared type while
+// only one body was actually sent.
+func TestPrepareEmitsOneContentTypePerCommand(t *testing.T) {
+	spec := multiContentTypeSpec()
+
+	var defaultOut, fanOut string
+	withPrepareMode(t, "prepare", func() {
+		defaultOut = captureStdout(t, func() { BuildRequestsFromPaths(spec, http.Client{}, nil) })
+		allContentTypes = true
+		fanOut = captureStdout(t, func() { BuildRequestsFromPaths(spec, http.Client{}, nil) })
+	})
+
+	defaultLines := strings.Split(strings.TrimSpace(defaultOut), "\n")
+	if len(defaultLines) != 1 {
+		t.Fatalf("expected 1 command by default, got %d:\n%s", len(defaultLines), defaultOut)
+	}
+	if !strings.Contains(defaultLines[0], "-H 'Content-Type: application/json'") {
+		t.Errorf("default command should use the preferred JSON body: %s", defaultLines[0])
+	}
+
+	fanLines := strings.Split(strings.TrimSpace(fanOut), "\n")
+	// Four encodable types; application/octet-stream has no encoder.
+	if len(fanLines) != 4 {
+		t.Fatalf("expected 4 commands under --all-content-types, got %d:\n%s", len(fanLines), fanOut)
+	}
+
+	for _, line := range append(defaultLines, fanLines...) {
+		if n := strings.Count(line, "-H 'Content-Type:"); n > 1 {
+			t.Errorf("command declares %d Content-Type headers:\n%s", n, line)
+		}
+	}
+
+	wantBodies := []string{
+		"-H 'Content-Type: application/json' -d '{\"name\":\"bishopfox\"}'",
+		"-H 'Content-Type: application/x-www-form-urlencoded' -d 'name=bishopfox'",
+		"-F 'name=bishopfox'",
+		"-H 'Content-Type: application/xml' -d '<name>bishopfox</name>'",
+	}
+	for i, want := range wantBodies {
+		if !strings.Contains(fanLines[i], want) {
+			t.Errorf("command %d:\n  got  %s\n  want it to contain %s", i, fanLines[i], want)
+		}
+	}
+
+	// curl generates its own multipart boundary, so echoing sj's would print a
+	// command that cannot reproduce the request.
+	if strings.Contains(fanLines[2], "Content-Type") {
+		t.Errorf("multipart command should not declare a Content-Type: %s", fanLines[2])
+	}
+}
+
+// TestPrepareForSqlmapSkipsMultipart pins that sj never prints a sqlmap
+// command carrying -F, which is not a sqlmap option and cannot be run.
+func TestPrepareForSqlmapSkipsMultipart(t *testing.T) {
+	spec := multiContentTypeSpec()
+
+	var out string
+	withPrepareMode(t, "prepare", func() {
+		prepareFor = "sqlmap"
+		allContentTypes = true
+		out = captureStdout(t, func() { BuildRequestsFromPaths(spec, http.Client{}, nil) })
+	})
+
+	if strings.Contains(out, " -F ") {
+		t.Errorf("sqlmap output contains an unrunnable -F argument:\n%s", out)
+	}
+	if n := strings.Count(out, "sqlmap"); n != 3 {
+		t.Errorf("expected 3 sqlmap commands (multipart skipped), got %d:\n%s", n, out)
+	}
+	if !strings.Contains(out, "--data='{\"name\":\"bishopfox\"}'") {
+		t.Errorf("sqlmap body should be rewritten to --data=:\n%s", out)
+	}
+}
+
+// TestEndpointsPrintsOncePerOperation pins that fanning out across content
+// types does not multiply the endpoint listing.
+func TestEndpointsPrintsOncePerOperation(t *testing.T) {
+	spec := multiContentTypeSpec()
+
+	var out string
+	withPrepareMode(t, "endpoints", func() {
+		allContentTypes = true
+		out = captureStdout(t, func() { BuildRequestsFromPaths(spec, http.Client{}, nil) })
+	})
+
+	if got := strings.TrimSpace(out); got != "/multi" {
+		t.Errorf("endpoints output = %q, want %q", got, "/multi")
+	}
+}
+
+// TestHybridV2BodyAndFormDataAreSeparateVariants covers an operation declaring
+// both an "in: body" param and "in: formData" params. The two used to corrupt
+// each other: the JSON body was written first, then form fields were appended
+// onto it as "&k=v".
+func TestHybridV2BodyAndFormDataAreSeparateVariants(t *testing.T) {
+	spec := map[string]interface{}{
+		"paths": map[string]interface{}{
+			"/hybrid": map[string]interface{}{
+				"post": map[string]interface{}{
+					"parameters": []interface{}{
+						map[string]interface{}{
+							"name": "payload",
+							"in":   "body",
+							"schema": map[string]interface{}{
+								"type":       "object",
+								"properties": map[string]interface{}{"name": map[string]interface{}{"type": "string"}},
+							},
+						},
+						map[string]interface{}{"name": "field1", "in": "formData", "type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	var out string
+	withPrepareMode(t, "prepare", func() {
+		allContentTypes = true
+		out = captureStdout(t, func() { BuildRequestsFromPaths(spec, http.Client{}, nil) })
+	})
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 commands, got %d:\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], `-d '{"name":"bishopfox"}'`) {
+		t.Errorf("JSON variant is not clean JSON: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], "-d 'field1=bishopfox'") {
+		t.Errorf("formData variant is not clean urlencoded: %s", lines[1])
+	}
+}
+
+// TestResponseDescriptionsAreScopedToTheirOperation covers the response
+// description path end to end: descriptions were collected keyed by the status
+// string but looked up with an int, so every lookup missed; the map was also
+// shared across the whole spec, so fixing the key alone would have printed one
+// endpoint's description against another's response.
+func TestResponseDescriptionsAreScopedToTheirOperation(t *testing.T) {
+	oldArgs, oldTarget, oldBase := os.Args, apiTarget, basePath
+	oldFormat, oldHeaders, oldCT := outputFormat, Headers, contentType
+	oldForce, oldTimeout, oldPreview := force, timeout, responsePreviewLength
+	oldResults, oldVerbose, oldAll := jsonResultsStringArray, verbose, allContentTypes
+	defer func() {
+		os.Args, apiTarget, basePath = oldArgs, oldTarget, oldBase
+		outputFormat, Headers, contentType = oldFormat, oldHeaders, oldCT
+		force, timeout, responsePreviewLength = oldForce, oldTimeout, oldPreview
+		jsonResultsStringArray, verbose, allContentTypes = oldResults, oldVerbose, oldAll
+	}()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ok" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	os.Args = []string{"sj", "automate"}
+	apiTarget = srv.URL
+	basePath = ""
+	outputFormat = "console"
+	Headers = nil
+	contentType = ""
+	force = true
+	verbose = false
+	allContentTypes = false
+	timeout = 30
+	responsePreviewLength = 50
+	jsonResultsStringArray = nil
+
+	responses := func(pairs map[string]string) map[string]interface{} {
+		out := map[string]interface{}{}
+		for status, desc := range pairs {
+			out[status] = map[string]interface{}{"description": desc}
+		}
+		return out
+	}
+	spec := map[string]interface{}{
+		"paths": map[string]interface{}{
+			"/alpha": map[string]interface{}{
+				"get": map[string]interface{}{"responses": responses(map[string]string{"404": "Alpha is missing"})},
+			},
+			"/beta": map[string]interface{}{
+				"get": map[string]interface{}{"responses": responses(map[string]string{"404": "Beta is missing"})},
+			},
+			// No 404 declared, so the spec's catch-all applies.
+			"/gamma": map[string]interface{}{
+				"get": map[string]interface{}{"responses": responses(map[string]string{"default": "Something went wrong"})},
+			},
+			"/ok": map[string]interface{}{
+				"get": map[string]interface{}{"responses": responses(map[string]string{"200": "successful operation"})},
+			},
+		},
+	}
+
+	out := captureStdout(t, func() { BuildRequestsFromPaths(spec, http.Client{}, nil) })
+
+	byPath := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		for _, p := range []string{"/alpha", "/beta", "/gamma", "/ok"} {
+			if strings.Contains(line, p+" ") || strings.HasSuffix(line, p) {
+				byPath[p] = line
+			}
+		}
+	}
+
+	if !strings.Contains(byPath["/alpha"], "Alpha is missing") {
+		t.Errorf("/alpha line lost its description: %q", byPath["/alpha"])
+	}
+	if !strings.Contains(byPath["/beta"], "Beta is missing") {
+		t.Errorf("/beta line lost its description: %q", byPath["/beta"])
+	}
+	// The leak the shared map would cause.
+	if strings.Contains(byPath["/beta"], "Alpha is missing") {
+		t.Errorf("/beta showed /alpha's description: %q", byPath["/beta"])
+	}
+	if !strings.Contains(byPath["/gamma"], "Something went wrong") {
+		t.Errorf("/gamma did not fall back to the default response: %q", byPath["/gamma"])
+	}
+	// A 2xx description only repeats what the status already says.
+	if strings.Contains(byPath["/ok"], "successful operation") {
+		t.Errorf("/ok annotated a successful response: %q", byPath["/ok"])
 	}
 }

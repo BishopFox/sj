@@ -1,0 +1,78 @@
+openapi: 3.0.0
+info:
+  title: Multi Content Type Test
+  version: 1.0.0
+paths:
+  /multi:
+    post:
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Widget'
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/Widget'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Widget'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Widget'
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+  /vendor:
+    post:
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          application/vnd.api+json:
+            schema:
+              $ref: '#/components/schemas/Widget'
+          application/json; charset=utf-8:
+            schema:
+              $ref: '#/components/schemas/Widget'
+  /anytype:
+    post:
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/Widget'
+  /binary:
+    post:
+      responses:
+        '200':
+          description: OK
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+  /described:
+    get:
+      responses:
+        '404':
+          description: Widget not found
+        default:
+          description: Unexpected error
+components:
+  schemas:
+    Widget:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer

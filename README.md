@@ -132,6 +132,40 @@ $ curl -X GET "https://petstore.swagger.io/v2/user/bishopfox"
 $ curl -X PUT "https://petstore.swagger.io/v2/user/bishopfox" -H 'Content-Type: application/json' -d '{"email":"noreply@localhost.localdomain","firstName":"bishopfox","id":1,"lastName":"bishopfox","password":"bishopfox","phone":"bishopfox","userStatus":1,"username":"bishopfox"}'
 ```
 
+### Multiple request body content types
+
+An operation often declares the same body under several content types. By default `sj`
+sends the one most likely to be accepted, preferring `application/json`, then
+`application/x-www-form-urlencoded`, then `multipart/form-data`, then XML. The choice is
+deterministic, so repeated runs produce identical commands.
+
+Because a JSON parser and an XML parser are different attack surface, `--all-content-types`
+sends every declared type instead of only the preferred one:
+
+```bash
+$ sj prepare -l spec.yaml -T https://api.example.com -q --all-content-types
+
+$ curl -X POST "https://api.example.com/multi" -H 'Content-Type: application/json' -d '{"name":"bishopfox","size":1}'
+$ curl -X POST "https://api.example.com/multi" -H 'Content-Type: application/x-www-form-urlencoded' -d 'name=bishopfox&size=1'
+$ curl -X POST "https://api.example.com/multi" -F 'name=bishopfox' -F 'size=1'
+$ curl -X POST "https://api.example.com/multi" -H 'Content-Type: application/xml' -d '<name>bishopfox</name><size>1</size>'
+```
+
+Note that this multiplies the number of requests sent to the target, and that
+`--replay-proxy` receives every one of them.
+
+To test a single specific encoding, pass it with `-H`. When the operation declares that
+type, `sj` sends the matching body under it:
+
+```bash
+$ sj prepare -l spec.yaml -T https://api.example.com -q -H "Content-Type: application/xml"
+```
+
+When the operation does *not* declare it, `sj` warns and sends the preferred body under
+your header anyway, which is useful for parser-differential testing. Content types `sj`
+cannot encode a body for (`application/octet-stream`, `text/plain`) are skipped rather
+than sent as an empty body under a misleading header.
+
 > Use the `endpoints` command to generate a list of raw endpoints from the provided definition file.
 
 ```bash
@@ -219,6 +253,7 @@ Available Commands:
 
 Flags:
   -A, --agent string            Set the User-Agent string. (default "Swagger Jacker (github.com/BishopFox/sj)")
+      --all-content-types       Send a separate request for every request body content type an operation declares, instead of only the preferred one.
   -b, --base-path string        Set the API base path if not defined in the definition file (i.e. /V2/).
   -f, --format string           Declare the format of the definition file (json/yaml/yml/js). (default "json")
   -H, --headers stringArray     Add custom headers, separated by a colon ("Name: Value"). Multiple flags are accepted.

@@ -6,12 +6,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"maps"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -65,7 +65,6 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 		}
 	}
 
-	var errorDescriptions = make(map[any]string)
 	for _, pathName := range pathKeys {
 		pathItem := paths[pathName]
 		if ops, ok := pathItem.(map[string]interface{}); ok {
@@ -89,6 +88,10 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						Headers = append([]string(nil), userHeaders...)
 						contentType = userContentType
 
+						// Scoped to this operation: a description belongs to the
+						// response it was declared under, so one endpoint's "Not
+						// found" must never be printed against another's.
+						errorDescriptions := make(map[string]string)
 						if responses, ok := opMap["responses"].(map[string]interface{}); ok {
 							for status, respItem := range responses {
 								if respMap, ok := respItem.(map[string]interface{}); ok {
@@ -96,25 +99,21 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										errorDescriptions[status] = desc
 									}
 								}
-
 							}
 						}
 
 						targetURL := fmt.Sprintf("%s%s%s", apiTarget, basePath, pathName)
 						curl := fmt.Sprintf("curl -X %s \"%s\"", strings.ToUpper(method), targetURL)
-						var bodyData string
-						// curlBodyArg is the shell-quoted rendering of bodyData that is
-						// appended to curl once, after every parameter is known.
-						var curlBodyArg string
-						var multipartBody bool
+						// variants collects every body this operation declares, from
+						// all three sources below. None is discarded; selectVariants
+						// decides which ones are sent.
+						var variants []bodyVariant
 						// cookiePairs accumulates "in: cookie" parameters so they can be sent
-						// as a single Cookie header. hasFormData records whether any
-						// "in: formData" (Swagger v2) parameter contributed a body field, and
-						// bodyTypeRendered whether the body's Content-Type has already been
-						// written to the printed command.
+						// as a single Cookie header. formBody accumulates "in: formData"
+						// (Swagger v2) fields, which become one urlencoded variant.
 						var cookiePairs []string
+						var formBody string
 						var hasFormData bool
-						var bodyTypeRendered bool
 
 						// Extracts the expected parameters from the parameters object
 						if params, ok := opMap["parameters"].([]interface{}); ok {
@@ -145,13 +144,8 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 										if in == "body" {
 											bodySchema, _ := pMap["schema"].(map[string]interface{})
 											expandedBody := ExpandSchema(spec, bodySchema, map[string]bool{}, paramContextSpec)
-											if encoded, err := json.Marshal(GenerateExample(expandedBody)); err == nil {
-												bodyData = string(encoded)
-												EnforceSingleContentType("application/json")
-												if !bodyTypeRendered {
-													curl += " -H " + shellSingleQuote("Content-Type: application/json")
-													bodyTypeRendered = true
-												}
+											if variant, ok := buildVariant(ctJSON, GenerateExample(expandedBody)); ok {
+												variants = append(variants, variant)
 											}
 											continue
 										}
@@ -227,7 +221,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 												cookiePairs = append(cookiePairs, encodePair(name, pValue))
 											case "formData":
 												// Swagger v2 form field: contributes to the urlencoded body.
-												bodyData = appendFormField(bodyData, name, pValue)
+												formBody = appendFormField(formBody, name, pValue)
 												hasFormData = true
 											}
 										}
@@ -244,11 +238,10 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 							curl += " -b " + shellSingleQuote(cookieValue)
 						}
 
-						// Swagger v2 formData params have no requestBody to set the content
-						// type, so declare the urlencoded type on both paths here.
+						// Swagger v2 formData fields have no requestBody to declare a
+						// content type, so they become an explicit urlencoded variant.
 						if hasFormData {
-							EnforceSingleContentType("application/x-www-form-urlencoded")
-							curl += " -H " + shellSingleQuote("Content-Type: application/x-www-form-urlencoded")
+							variants = append(variants, newTextBodyVariant(ctForm, ctForm, formBody))
 						}
 
 						// Extracts the expected parameters from the requestBody object
@@ -262,78 +255,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 									reqBodyContextSpec = contextSpec
 								}
 							}
-
-							if contentTypes, ok := reqBody["content"].(map[string]interface{}); ok {
-								for cType := range contentTypes {
-									if contentType == "" {
-										EnforceSingleContentType(cType)
-									} else {
-										EnforceSingleContentType(contentType)
-									}
-
-									if ct, ok := contentTypes[cType].(map[string]interface{}); ok {
-										if schema, ok := ct["schema"].(map[string]interface{}); ok {
-											expanded := ExpandSchema(spec, schema, map[string]bool{}, reqBodyContextSpec)
-											example := GenerateExample(expanded)
-
-											if cType == "application/json" {
-												bodyBytes, err := json.Marshal(example)
-												if err == nil {
-													bodyData = string(bodyBytes)
-													curl += " -H " + shellSingleQuote("Content-Type: application/json")
-												}
-											}
-											if cType == "application/xml" || cType == "text/xml" {
-												if obj, ok := example.(map[string]interface{}); ok {
-													bodyData = XmlFromObject(obj)
-													curl += " -H " + shellSingleQuote("Content-Type: "+cType)
-												}
-											}
-											if cType == "application/x-www-form-urlencoded" {
-												if obj, ok := example.(map[string]interface{}); ok {
-													bodyData = encodeFormBody(obj)
-													curl += " -H " + shellSingleQuote("Content-Type: "+cType)
-												}
-											}
-											if cType == "multipart/form-data" {
-												if obj, ok := example.(map[string]interface{}); ok {
-													keys := slices.Sorted(maps.Keys(obj))
-													var buf bytes.Buffer
-													mw := multipart.NewWriter(&buf)
-													for _, k := range keys {
-														_ = mw.WriteField(k, fmt.Sprintf("%v", obj[k]))
-													}
-													_ = mw.Close()
-													bodyData = buf.String()
-													// multipart.Writer owns this wire format, so the body is
-													// never appended to curl as a -d argument.
-													multipartBody = true
-													// Replace the bare multipart/form-data Content-Type
-													// (set earlier in the loop) with a boundary-aware one.
-													EnforceSingleContentType(mw.FormDataContentType())
-													for _, k := range keys {
-														curl += " -F " + shellSingleQuote(fmt.Sprintf("%s=%v", k, obj[k]))
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-
-						// Compose the body argument once, from bodyData, so the bytes that are
-						// sent and the printed curl command cannot drift apart.
-						if bodyData != "" && !multipartBody {
-							curlBodyArg = shellSingleQuote(bodyData)
-							curl += " -d " + curlBodyArg
-						}
-
-						// Update the curl command with the final targetURL (which may have been modified with query params)
-						// Extract and replace the URL in quotes
-						curlParts := strings.SplitN(curl, "\"", 3)
-						if len(curlParts) >= 3 {
-							curl = curlParts[0] + "\"" + targetURL + "\"" + curlParts[2]
+							variants = append(variants, buildBodyVariants(spec, reqBody, reqBodyContextSpec)...)
 						}
 
 						logURL, parseErr := url.Parse(targetURL)
@@ -341,72 +263,160 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 							printWarn("Error parsing URL '%s': %v - skipping endpoint.", targetURL, parseErr)
 							continue
 						}
-						switch os.Args[1] {
-						case "automate":
-							// Any method that declares a body sends it. These are the same bytes
-							// the printed curl command was composed from above, so what is shown
-							// and what goes on the wire cannot disagree.
-							sentBody := []byte(bodyData)
 
-							_, resp, sc, _, sentUA := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody))
+						if os.Args[1] == "endpoints" {
+							// endpoints only lists paths, so the body never matters and
+							// one line per path+method is printed regardless of how many
+							// content types the operation declares.
+							fmt.Println(basePath + pathName)
+							continue
+						}
 
-							tempResponsePreviewLength := responsePreviewLength
-							if len(resp) <= responsePreviewLength {
-								tempResponsePreviewLength = len(resp)
+						variants = orderVariants(variants)
+						if os.Args[1] == "prepare" && strings.EqualFold(prepareFor, "sqlmap") {
+							// sqlmap has no -F equivalent, so a multipart variant would
+							// print a command that cannot be run.
+							variants = slices.DeleteFunc(variants, func(v bodyVariant) bool {
+								return v.declared == ctMultipart
+							})
+						}
+
+						selected := selectVariants(variants, contentType, allContentTypes)
+						if len(selected) == 0 {
+							// No declared body: a single bodyless request, as before.
+							selected = []bodyVariant{{}}
+						}
+
+						if os.Args[1] == "automate" {
+							// Ask once per operation. sj may send this same URL once per
+							// declared content type, and re-prompting for each one would
+							// be noise; approvedTarget stops MakeRequestFull asking again.
+							if dangerousRequestDeclined(targetURL) {
+								continue
+							}
+							approvedTarget = targetURL
+						}
+
+						// Snapshot the state every variant starts from. The loop below
+						// rebuilds curl and Headers per variant so that what is printed
+						// and what goes on the wire describe the same request.
+						baseCurl := curl
+						baseHeaders := append([]string(nil), Headers...)
+
+						// The body encoding is only worth reporting when an operation
+						// was tested under more than one. Otherwise it would add a field
+						// to every result row that says nothing the request did not
+						// already imply, and change output every consumer already parses.
+						reportContentType := len(selected) > 1
+
+						for _, v := range selected {
+							// Re-copy rather than assign: EnforceSingleContentType
+							// compacts Headers in place, so sharing a backing array would
+							// let one variant rewrite the snapshot the next one starts from.
+							Headers = append([]string(nil), baseHeaders...)
+							curl = baseCurl
+
+							// A bodyless request declares no media type. Enforcing an
+							// empty one would append a bare "Content-Type:" that
+							// applyHeaders only replaces when the request carries bytes.
+							if v.contentType != "" {
+								EnforceSingleContentType(v.contentType)
+								if !v.omitCurlCT {
+									curl += " -H " + shellSingleQuote("Content-Type: "+v.contentType)
+								}
+							}
+							curl += v.curlArgs
+
+							// Update the curl command with the final targetURL (which may have been modified with query params)
+							// Extract and replace the URL in quotes
+							curlParts := strings.SplitN(curl, "\"", 3)
+							if len(curlParts) >= 3 {
+								curl = curlParts[0] + "\"" + targetURL + "\"" + curlParts[2]
 							}
 
-							var result []byte
+							switch os.Args[1] {
+							case "automate":
+								// These are the same bytes the printed curl command was
+								// composed from above, so what is shown and what goes on
+								// the wire cannot disagree.
+								sentBody := []byte(v.body)
 
-							if verbose {
-								result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: logURL.Path, Curl: curl})
-							} else {
-								result, _ = json.Marshal(Result{Method: method, Status: sc, Target: logURL.Path})
-							}
+								_, resp, sc, _, sentUA := MakeRequestFull(client, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody))
 
-							if getAccessibleEndpoints {
-								if sc == 200 {
-									accessibleEndpoints = append(accessibleEndpoints, logURL.Path)
+								tempResponsePreviewLength := responsePreviewLength
+								if len(resp) <= responsePreviewLength {
+									tempResponsePreviewLength = len(resp)
+								}
+
+								// Only annotate responses that went wrong: a 2xx
+								// description ("successful operation") only repeats what
+								// the status already says. Descriptions are keyed by the
+								// status as written in the document, with "default" as the
+								// spec's catch-all.
+								description := ""
+								if sc < 200 || sc > 299 {
+									desc, ok := errorDescriptions[strconv.Itoa(sc)]
+									if !ok {
+										desc = errorDescriptions["default"]
+									}
+									description = desc
+								}
+
+								reportedCT := ""
+								if reportContentType {
+									reportedCT = v.declared
+								}
+								var result []byte
+
+								if verbose {
+									result, _ = json.Marshal(VerboseResult{Method: method, Preview: resp[:tempResponsePreviewLength], Status: sc, Target: logURL.Path, Curl: curl, ContentType: reportedCT})
+								} else {
+									result, _ = json.Marshal(Result{Method: method, Status: sc, Target: logURL.Path, ContentType: reportedCT})
+								}
+
+								if getAccessibleEndpoints {
+									if sc == 200 {
+										accessibleEndpoints = append(accessibleEndpoints, logURL.Path)
+										if jsonResultsStringArray == nil {
+											jsonResultsStringArray = append(jsonResultsStringArray, string(result))
+										} else {
+											jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
+										}
+										if outputFormat == "console" {
+											writeLog(sc, logURL.Path, strings.ToUpper(method), description, resp[:tempResponsePreviewLength])
+										}
+										if replayClient != nil {
+											ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
+										}
+									}
+								} else {
 									if jsonResultsStringArray == nil {
 										jsonResultsStringArray = append(jsonResultsStringArray, string(result))
 									} else {
 										jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
 									}
 									if outputFormat == "console" {
-										writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
+										writeLog(sc, logURL.Path, strings.ToUpper(method), description, resp[:tempResponsePreviewLength])
 									}
 									if replayClient != nil {
 										ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
 									}
 								}
-							} else {
-								if jsonResultsStringArray == nil {
-									jsonResultsStringArray = append(jsonResultsStringArray, string(result))
-								} else {
-									jsonResultsStringArray = append(jsonResultsStringArray, ","+string(result))
-								}
-								if outputFormat == "console" {
-									writeLog(sc, logURL.Path, strings.ToUpper(method), errorDescriptions[sc], resp[:tempResponsePreviewLength])
-								}
-								if replayClient != nil {
-									ReplayRequest(replayClient, strings.ToUpper(method), targetURL, timeout, bytes.NewReader(sentBody), sentUA)
-								}
-							}
 
-						case "endpoints":
-							fmt.Println(basePath + pathName)
-						case "prepare":
-							var preparedCommand string = curl
-							if strings.ToLower(prepareFor) == "sqlmap" {
-								preparedCommand = strings.Replace(preparedCommand, "curl", "sqlmap", 1)
-								preparedCommand = strings.Replace(preparedCommand, "-X "+strings.ToUpper(method), "--method="+strings.ToUpper(method)+" -u", 1)
-								if curlBodyArg != "" {
-									preparedCommand = strings.Replace(preparedCommand, "-d "+curlBodyArg, "--data="+curlBodyArg, 1)
+							case "prepare":
+								var preparedCommand string = curl
+								if strings.EqualFold(prepareFor, "sqlmap") {
+									preparedCommand = strings.Replace(preparedCommand, "curl", "sqlmap", 1)
+									preparedCommand = strings.Replace(preparedCommand, "-X "+strings.ToUpper(method), "--method="+strings.ToUpper(method)+" -u", 1)
+									if v.curlBodyArg != "" {
+										preparedCommand = strings.Replace(preparedCommand, "-d "+v.curlBodyArg, "--data="+v.curlBodyArg, 1)
+									}
+									preparedCommand = "$ " + preparedCommand
+								} else if strings.EqualFold(prepareFor, "curl") {
+									preparedCommand = "$ " + curl
 								}
-								preparedCommand = "$ " + preparedCommand
-							} else if prepareFor == "curl" {
-								preparedCommand = "$ " + curl
+								fmt.Println(preparedCommand)
 							}
-							fmt.Println(preparedCommand)
 						}
 					}
 				}

@@ -13,14 +13,19 @@ type Result struct {
 	Method string `json:"method"`
 	Status int    `json:"status"`
 	Target string `json:"target"`
+	// ContentType names the request body encoding this result came from. It is
+	// omitted unless an operation was tested under more than one, so
+	// single-variant output is unchanged.
+	ContentType string `json:"contentType,omitempty"`
 }
 
 type VerboseResult struct {
-	Method  string `json:"method"`
-	Preview string `json:"preview"`
-	Status  int    `json:"status"`
-	Target  string `json:"target"`
-	Curl    string `json:"curl"`
+	Method      string `json:"method"`
+	Preview     string `json:"preview"`
+	Status      int    `json:"status"`
+	Target      string `json:"target"`
+	Curl        string `json:"curl"`
+	ContentType string `json:"contentType,omitempty"`
 }
 
 // Diagnostic helpers — all write to stderr so stdout stays clean for piping.
@@ -145,11 +150,20 @@ func logResult(sc int, target, method, errorMsg, preview string, out io.Writer) 
 		statusStr = "---"
 	}
 
-	line := fmt.Sprintf("%s  %-7s  %-3s  %s\n",
+	// The description the document gives for this status, when it declared one.
+	// It names what the API says the response means, which is often the only
+	// hint about why an endpoint refused a request.
+	annotation := ""
+	if errorMsg != "" {
+		annotation = "  " + faint(errorMsg)
+	}
+
+	line := fmt.Sprintf("%s  %-7s  %-3s  %s%s\n",
 		painter(sym),
 		painter(method),
 		painter(statusStr),
 		target,
+		annotation,
 	)
 	fmt.Fprint(out, line)
 

@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var allContentTypes bool
 var apiTarget string
 var basePath string
 var customDate string
@@ -67,6 +68,7 @@ func init() {
 	rootCmd.AddCommand(prepareCmd)
 	rootCmd.AddCommand(bruteCmd)
 	rootCmd.AddCommand(convertCmd)
+	rootCmd.PersistentFlags().BoolVar(&allContentTypes, "all-content-types", false, "Send a separate request for every request body content type an operation declares, instead of only the preferred one.")
 	rootCmd.PersistentFlags().StringVarP(&UserAgent, "agent", "A", "Swagger Jacker (github.com/BishopFox/sj)", "Set the User-Agent string.")
 	rootCmd.PersistentFlags().StringVarP(&basePath, "base-path", "b", "", "Set the API base path if not defined in the definition file (i.e. /V2/).")
 	rootCmd.PersistentFlags().StringVarP(&customURL, "custom-url", "c", "https://bishopfox.com", "Set a custom URL to test discovered URL parameters.")

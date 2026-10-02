@@ -111,6 +111,50 @@ func applyHeaders(req *http.Request, userAgent string) string {
 	return userAgent
 }
 
+// approvedTarget is the URL the operator has already cleared for the operation
+// being built. sj can send one URL several times -- once per declared body
+// content type -- and the dangerous-keyword prompt belongs to the endpoint, not
+// to each encoding of it. A redirect lands on a different URL and is still
+// checked.
+var approvedTarget string
+
+// dangerousRequestDeclined reports whether the operator chose to skip a target
+// whose URL contains a dangerous keyword, prompting them if they have not
+// already answered for this run.
+func dangerousRequestDeclined(target string) bool {
+	u, err := url.Parse(target)
+	if err != nil || u == nil {
+		return false
+	}
+
+	// Match whole words rather than substrings so "/store/order" is flagged
+	// while "/border" is not.
+	words := requestWords(u)
+	for _, v := range dangerousStrings {
+		if force || !words[v] || slices.ContainsFunc(safeWords, func(s string) bool { return strings.EqualFold(s, v) }) {
+			continue
+		}
+		if avoidDangerousRequests == "y" {
+			return true
+		}
+
+		userChoice = ""
+		printWarn("Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
+		fmt.Scanln(&userChoice)
+		if strings.ToLower(userChoice) != "y" {
+			if !riskSurveyed {
+				avoidDangerousRequests = "y"
+				printWarn("Do you want to avoid all dangerous requests? (Y/n)")
+				fmt.Scanln(&avoidDangerousRequests)
+				avoidDangerousRequests = strings.ToLower(avoidDangerousRequests)
+				riskSurveyed = true
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // MakeRequest returns the body bytes, body string, and status code. It wraps
 // MakeRequestFull for callers that do not need the Content-Type.
 func MakeRequest(client http.Client, method, target string, timeout int64, reqData io.Reader) ([]byte, string, int) {
@@ -184,29 +228,8 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
 		return nil, "", 0, "", ""
 	}
-	// Match whole words rather than substrings so "/store/order" is flagged
-	// while "/border" is not.
-	words := requestWords(u)
-	for _, v := range dangerousStrings {
-		if os.Args[1] == "automate" && !force && words[v] && !slices.ContainsFunc(safeWords, func(s string) bool { return strings.EqualFold(s, v) }) {
-			userChoice = ""
-			if avoidDangerousRequests == "y" {
-				return nil, "", 0, "", ""
-			} else {
-				printWarn("Dangerous keyword '%s' detected in URL (%s). Do you still want to test this endpoint? (y/N)", v, target)
-				fmt.Scanln(&userChoice)
-				if strings.ToLower(userChoice) != "y" {
-					if !riskSurveyed {
-						avoidDangerousRequests = "y"
-						printWarn("Do you want to avoid all dangerous requests? (Y/n)")
-						fmt.Scanln(&avoidDangerousRequests)
-						avoidDangerousRequests = strings.ToLower(avoidDangerousRequests)
-						riskSurveyed = true
-					}
-					return nil, "", 0, "", ""
-				}
-			}
-		}
+	if os.Args[1] == "automate" && target != approvedTarget && dangerousRequestDeclined(target) {
+		return nil, "", 0, "", ""
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
