@@ -103,6 +103,12 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						}
 
 						targetURL := fmt.Sprintf("%s%s%s", apiTarget, basePath, pathName)
+						// Apply any query-string API keys from a security scheme
+						// before spec params and before curl is composed, so the
+						// sent request and the printed command both carry the key.
+						for _, qp := range authQueryParams {
+							targetURL = appendQueryParam(targetURL, qp.name, qp.value)
+						}
 						curl := fmt.Sprintf("curl -X %s \"%s\"", strings.ToUpper(method), targetURL)
 						// variants collects every body this operation declares, from
 						// all three sources below. None is discarded; selectVariants
