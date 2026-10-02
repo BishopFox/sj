@@ -1109,7 +1109,7 @@ func TestRawValuesSkipsEncoding(t *testing.T) {
 // parameters are actually placed on the outgoing request - not merely printed
 // in the generated curl command.
 func TestParameterLocationsAreSent(t *testing.T) {
-	oldArgs := os.Args
+	oldMode := Mode
 	oldAPITarget := apiTarget
 	oldBasePath := basePath
 	oldSwaggerURL := swaggerURL
@@ -1125,7 +1125,7 @@ func TestParameterLocationsAreSent(t *testing.T) {
 	oldPreview := responsePreviewLength
 	oldResults := jsonResultsStringArray
 	defer func() {
-		os.Args = oldArgs
+		Mode = oldMode
 		apiTarget = oldAPITarget
 		basePath = oldBasePath
 		swaggerURL = oldSwaggerURL
@@ -1164,7 +1164,7 @@ func TestParameterLocationsAreSent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	os.Args = []string{"sj", "automate"}
+	Mode = "automate"
 	apiTarget = srv.URL
 	basePath = ""
 	swaggerURL = ""
@@ -1225,7 +1225,7 @@ func TestParameterLocationsAreSent(t *testing.T) {
 // covers the Swagger v2 "in: body" parameter, whose schema is the whole body and
 // is therefore serialized as JSON rather than as form fields.
 func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
-	oldArgs := os.Args
+	oldMode := Mode
 	oldAPITarget := apiTarget
 	oldBasePath := basePath
 	oldSwaggerURL := swaggerURL
@@ -1241,7 +1241,7 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 	oldPreview := responsePreviewLength
 	oldResults := jsonResultsStringArray
 	defer func() {
-		os.Args = oldArgs
+		Mode = oldMode
 		apiTarget = oldAPITarget
 		basePath = oldBasePath
 		swaggerURL = oldSwaggerURL
@@ -1290,7 +1290,7 @@ func TestDeclaredBodyIsSentForAllMethods(t *testing.T) {
 		return reqs[0]
 	}
 
-	os.Args = []string{"sj", "automate"}
+	Mode = "automate"
 	apiTarget = srv.URL
 	basePath = ""
 	swaggerURL = ""
@@ -1461,16 +1461,16 @@ func multiContentTypeSpec() map[string]interface{} {
 // them afterwards.
 func withPrepareMode(t *testing.T, mode string, fn func()) {
 	t.Helper()
-	oldArgs, oldTarget, oldBase := os.Args, apiTarget, basePath
+	oldMode, oldTarget, oldBase := Mode, apiTarget, basePath
 	oldHeaders, oldCT, oldAll := Headers, contentType, allContentTypes
 	oldPrepareFor, oldTestString, oldWarned := prepareFor, testString, forcedContentTypeWarned
 	defer func() {
-		os.Args, apiTarget, basePath = oldArgs, oldTarget, oldBase
+		Mode, apiTarget, basePath = oldMode, oldTarget, oldBase
 		Headers, contentType, allContentTypes = oldHeaders, oldCT, oldAll
 		prepareFor, testString, forcedContentTypeWarned = oldPrepareFor, oldTestString, oldWarned
 	}()
 
-	os.Args = []string{"sj", mode}
+	Mode = mode
 	apiTarget = "http://127.0.0.1:9999"
 	basePath = ""
 	Headers = nil
@@ -1623,12 +1623,12 @@ func TestHybridV2BodyAndFormDataAreSeparateVariants(t *testing.T) {
 // shared across the whole spec, so fixing the key alone would have printed one
 // endpoint's description against another's response.
 func TestResponseDescriptionsAreScopedToTheirOperation(t *testing.T) {
-	oldArgs, oldTarget, oldBase := os.Args, apiTarget, basePath
+	oldMode, oldTarget, oldBase := Mode, apiTarget, basePath
 	oldFormat, oldHeaders, oldCT := outputFormat, Headers, contentType
 	oldForce, oldTimeout, oldPreview := force, timeout, responsePreviewLength
 	oldResults, oldVerbose, oldAll := jsonResultsStringArray, verbose, allContentTypes
 	defer func() {
-		os.Args, apiTarget, basePath = oldArgs, oldTarget, oldBase
+		Mode, apiTarget, basePath = oldMode, oldTarget, oldBase
 		outputFormat, Headers, contentType = oldFormat, oldHeaders, oldCT
 		force, timeout, responsePreviewLength = oldForce, oldTimeout, oldPreview
 		jsonResultsStringArray, verbose, allContentTypes = oldResults, oldVerbose, oldAll
@@ -1643,7 +1643,7 @@ func TestResponseDescriptionsAreScopedToTheirOperation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	os.Args = []string{"sj", "automate"}
+	Mode = "automate"
 	apiTarget = srv.URL
 	basePath = ""
 	outputFormat = "console"

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 )
@@ -72,15 +71,15 @@ func TestRequestWords(t *testing.T) {
 // MakeRequestFull: the body has to survive the hop (client.Do drains the
 // original reader) and so does the query string.
 func TestRedirectPreservesBodyAndQuery(t *testing.T) {
-	oldArgs, oldForce, oldDepth := os.Args, force, depth
+	oldMode, oldForce, oldDepth := Mode, force, depth
 	oldHeaders, oldAccept, oldContentType := Headers, accept, contentType
 	oldUA, oldRandomUA := UserAgent, randomUserAgent
 	defer func() {
-		os.Args, force, depth = oldArgs, oldForce, oldDepth
+		Mode, force, depth = oldMode, oldForce, oldDepth
 		Headers, accept, contentType = oldHeaders, oldAccept, oldContentType
 		UserAgent, randomUserAgent = oldUA, oldRandomUA
 	}()
-	os.Args = []string{"sj", "automate"}
+	Mode = "automate"
 	force = true
 	depth = 0
 	Headers = nil

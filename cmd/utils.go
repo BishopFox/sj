@@ -287,7 +287,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 							continue
 						}
 
-						if os.Args[1] == "endpoints" {
+						if Mode == "endpoints" {
 							// endpoints only lists paths, so the body never matters and
 							// one line per path+method is printed regardless of how many
 							// content types the operation declares.
@@ -296,7 +296,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 						}
 
 						variants = orderVariants(variants)
-						if os.Args[1] == "prepare" && strings.EqualFold(prepareFor, "sqlmap") {
+						if Mode == "prepare" && strings.EqualFold(prepareFor, "sqlmap") {
 							// sqlmap has no -F equivalent, so a multipart variant would
 							// print a command that cannot be run.
 							variants = slices.DeleteFunc(variants, func(v bodyVariant) bool {
@@ -310,7 +310,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 							selected = []bodyVariant{{}}
 						}
 
-						if os.Args[1] == "automate" {
+						if Mode == "automate" {
 							// Ask once per operation. sj may send this same URL once per
 							// declared content type, and re-prompting for each one would
 							// be noise; approvedTarget stops MakeRequestFull asking again.
@@ -357,7 +357,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 								curl = curlParts[0] + "\"" + targetURL + "\"" + curlParts[2]
 							}
 
-							switch os.Args[1] {
+							switch Mode {
 							case "automate":
 								// These are the same bytes the printed curl command was
 								// composed from above, so what is shown and what goes on
@@ -449,7 +449,7 @@ func BuildRequestsFromPaths(spec map[string]interface{}, client http.Client, rep
 			}
 		}
 	}
-	if os.Args[1] == "automate" && outputFormat == "json" {
+	if Mode == "automate" && outputFormat == "json" {
 		for r := range jsonResultsStringArray {
 			var result Result
 			var verboseResult VerboseResult
@@ -742,7 +742,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 		// OpenAPI (v3)
 		if servers, ok := spec["servers"].([]interface{}); ok && len(servers) > 0 {
 			if len(servers) > 1 {
-				if !quiet && (os.Args[1] != "endpoints") && apiTarget == "" {
+				if !quiet && (Mode != "endpoints") && apiTarget == "" {
 					printWarn("Multiple servers detected in documentation. You can manually set a server to test with the -T flag.\nThe detected servers are as follows:")
 					for i := range servers {
 						if srv, ok := servers[i].(map[string]interface{}); ok {
@@ -775,7 +775,7 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 								} else {
 									// Local file with relative server URL and no -T flag
 									// Only fail for commands that need full URLs
-									if os.Args[1] != "endpoints" {
+									if Mode != "endpoints" {
 										die("Spec has relative server URL '%s' but no base URL available. Use -T to specify target server.", serverURL)
 									}
 								}
@@ -794,13 +794,13 @@ func GenerateRequests(bodyBytes []byte, client http.Client, replayClient *http.C
 		} else {
 			// No server info and no URL to parse - require user to specify target
 			// Only fail for commands that need full URLs
-			if os.Args[1] != "endpoints" {
+			if Mode != "endpoints" {
 				die("No server information found in spec and no URL provided. Use -T to specify target server.")
 			}
 		}
 	}
 
-	if os.Args[1] != "endpoints" {
+	if Mode != "endpoints" {
 		// Prints Title/Description/Version values if they exist
 		PrintSpecInfo(spec)
 	}

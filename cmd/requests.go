@@ -228,7 +228,7 @@ func MakeRequestFull(client http.Client, method, target string, timeout int64, r
 		printWarn("Error parsing URL '%s': %v - skipping request.", target, err)
 		return nil, "", 0, "", ""
 	}
-	if os.Args[1] == "automate" && target != approvedTarget && dangerousRequestDeclined(target) {
+	if Mode == "automate" && target != approvedTarget && dangerousRequestDeclined(target) {
 		return nil, "", 0, "", ""
 	}
 

@@ -14,6 +14,7 @@ var force bool
 var format string
 var insecure bool
 var localFile string
+var Mode string
 var outfile string
 var proxy string
 var replayProxy string
@@ -50,6 +51,13 @@ $ sj brute -u https://petstore.swagger.io
 Convert a Swagger (v2) definition file to an OpenAPI (v3) definition file:
 $ sj convert -u https://petstore.swagger.io/v2/swagger.json -o openapi.json`,
 
+	// PersistentPreRun captures the invoked subcommand name once, so the
+	// shared request-generation code can branch on the mode without reaching
+	// back into os.Args[1] (which panics or misbehaves when these functions
+	// are called programmatically rather than through the CLI).
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		Mode = cmd.Name()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			printErr("Command not specified. See the --help flag for usage.")

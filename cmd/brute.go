@@ -381,7 +381,7 @@ func UnmarshalSpec(bodyBytes []byte) (newDoc *openapi3.T) {
 			printErr("Error converting v2 document to v3: %s", err)
 		}
 		return newDoc
-	} else if os.Args[1] == "brute" {
+	} else if Mode == "brute" {
 		var noDoc openapi3.T
 		return &noDoc
 	} else {
